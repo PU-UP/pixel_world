@@ -16,6 +16,11 @@ var _retry_max: int = 2
 var _timeout_s: float = 20.0
 var _max_concurrent: int = 4
 var _next_id: int = 1
+var _obs_logger = null
+
+
+func set_logger(logger) -> void:
+	_obs_logger = logger
 
 
 func _ready() -> void:
@@ -87,6 +92,7 @@ func _pump_queue() -> void:
 
 func _send(http: HTTPRequest, item: Dictionary) -> void:
 	if not is_configured():
+		_log_llm(item.get("meta", {}), {}, false, "LLM API key not configured")
 		failed.emit(int(item["id"]), "LLM API key not configured (set MINIMAX_API_KEY in .env)", item.get("meta", {}))
 		_pump_queue()
 		return
@@ -112,6 +118,7 @@ func _send(http: HTTPRequest, item: Dictionary) -> void:
 	var err := http.request(url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 	if err != OK:
 		_http_item.erase(http)
+		_log_llm(item.get("meta", {}), {}, false, "HTTPRequest.request failed: %s" % err)
 		failed.emit(int(item["id"]), "HTTPRequest.request failed: %s" % err, item.get("meta", {}))
 		_pump_queue()
 
@@ -137,9 +144,17 @@ func _on_request_completed(
 			item["attempt"] = int(item["attempt"]) + 1
 			_queue.push_front(item)
 		else:
+			_log_llm(item.get("meta", {}), body_dict, false, err_msg)
 			failed.emit(req_id, err_msg, item.get("meta", {}))
 		_pump_queue()
 		return
 
+	_log_llm(item.get("meta", {}), body_dict, true, "")
 	completed.emit(req_id, body_dict, item.get("meta", {}))
 	_pump_queue()
+
+
+func _log_llm(meta: Dictionary, body: Dictionary, ok: bool, error: String) -> void:
+	if _obs_logger == null:
+		return
+	_obs_logger.log_llm_response(meta, body, ok, error)

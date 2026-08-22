@@ -7,6 +7,10 @@ var llm: Dictionary = {}
 var runtime: Dictionary = {}
 var agents: Dictionary = {}
 var world_cfg: Dictionary = {}
+var world_items: Dictionary = {}
+var world_ground_spawns: Array = []
+var world_regions: Array = []
+var world_events: Array = []
 
 var _env: Dictionary = {}
 
@@ -25,7 +29,12 @@ func load_all() -> void:
 	llm = _load_yaml_file(root.path_join("config/llm.yaml")).get("llm", {})
 	runtime = _load_yaml_file(root.path_join("config/runtime.yaml"))
 	agents = _load_yaml_file(root.path_join("config/agents.yaml"))
-	world_cfg = _load_yaml_file(root.path_join("config/world.yaml")).get("world", {})
+	var world_file: Dictionary = _load_yaml_file(root.path_join("config/world.yaml"))
+	world_cfg = world_file.get("world", {})
+	world_items = world_file.get("items", {})
+	world_ground_spawns = world_file.get("ground_items", [])
+	world_regions = world_file.get("regions", [])
+	world_events = world_file.get("events", [])
 	if _env.has("MINIMAX_BASE_URL"):
 		llm["base_url"] = _env["MINIMAX_BASE_URL"]
 	if _env.has("MINIMAX_MODEL"):
@@ -86,6 +95,38 @@ func memory_reflection_cfg() -> Dictionary:
 
 func memory_retrieval_cfg() -> Dictionary:
 	return memory_cfg().get("retrieval", {})
+
+
+func planning_cfg() -> Dictionary:
+	return runtime.get("planning", {})
+
+
+func relationships_cfg() -> Dictionary:
+	return runtime.get("relationships", {})
+
+
+func persona_drift_cfg() -> Dictionary:
+	return runtime.get("persona_drift", {})
+
+
+func world_item_pickup_radius() -> int:
+	return int(world_cfg.get("item_pickup_radius", 1))
+
+
+func world_item_defs() -> Dictionary:
+	return world_items
+
+
+func world_ground_item_spawns() -> Array:
+	return world_ground_spawns
+
+
+func world_region_defs() -> Array:
+	return world_regions
+
+
+func world_event_defs() -> Array:
+	return world_events
 
 
 func _load_env(path: String) -> void:

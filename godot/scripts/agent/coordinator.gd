@@ -11,6 +11,8 @@ const PersonaScript = preload("res://scripts/agent/persona.gd")
 const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
 const DecisionScript = preload("res://scripts/agent/decision.gd")
 const ReflectionScript = preload("res://scripts/agent/reflection.gd")
+const PlanningScript = preload("res://scripts/agent/planning.gd")
+const RelationshipsScript = preload("res://scripts/agent/relationships.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
 const AgentScene = preload("res://scenes/entities/Agent.tscn")
 
@@ -36,11 +38,31 @@ func setup(world, clock, llm, logger, agents_root: Node2D, runtime_parent: Node)
 	comm = CommRouterScript.new()
 	comm.name = "CommRouter"
 	_runtime_parent.add_child(comm)
+	comm.message_delivered.connect(_on_message_delivered)
+	if not _clock.tick.is_connected(_on_clock_tick):
+		_clock.tick.connect(_on_clock_tick)
 	_spawn_agents()
+
+
+var _co_presence_counter: int = 0
+
+
+func _on_clock_tick(_t: int) -> void:
+	_co_presence_counter += 1
+	if _co_presence_counter >= 10:
+		_co_presence_counter = 0
+		tick_co_presence()
 
 
 func spawn_count() -> int:
 	return records.size()
+
+
+func all_agent_ids() -> Array:
+	var ids: Array = []
+	for rec in records:
+		ids.append(str(rec["player"].agent_id))
+	return ids
 
 
 func selected_record() -> Dictionary:
@@ -94,25 +116,61 @@ func _spawn_agents() -> void:
 		_runtime_parent.add_child(memory)
 		memory.open(str(player.agent_id))
 
+		var relationships: RelationshipsScript = RelationshipsScript.new()
+		relationships.name = "Relationships_%s" % player.agent_id
+		_runtime_parent.add_child(relationships)
+		relationships.open(str(player.agent_id))
+
+		var planning: PlanningScript = PlanningScript.new()
+		planning.name = "Planning_%s" % player.agent_id
+		_runtime_parent.add_child(planning)
+
 		var decision: DecisionScript = DecisionScript.new()
 		decision.name = "Decision_%s" % player.agent_id
 		_runtime_parent.add_child(decision)
-		decision.setup(player, _clock, _llm, _logger, persona, memory, comm)
 
 		var reflection: ReflectionScript = ReflectionScript.new()
 		reflection.name = "Reflection_%s" % player.agent_id
 		_runtime_parent.add_child(reflection)
+
+		planning.setup(player, _clock, _llm, persona, memory, comm, relationships)
+		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships)
 		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id))
 
 		records.append({
 			"player": player,
 			"persona": persona,
 			"memory": memory,
+			"relationships": relationships,
+			"planning": planning,
 			"decision": decision,
 			"reflection": reflection,
 		})
 	_refresh_selection_highlight()
 	roster_changed.emit()
+
+
+func _on_message_delivered(
+	speaker_id: String,
+	target_id: String,
+	_text: String,
+	_tick: int,
+	recipient_ids: Array,
+) -> void:
+	var speaker_rec := _find_record(speaker_id)
+	if not speaker_rec.is_empty() and target_id != "broadcast":
+		speaker_rec["relationships"].on_spoke_to(target_id)
+	for rid in recipient_ids:
+		var listener_rec := _find_record(str(rid))
+		if not listener_rec.is_empty():
+			listener_rec["relationships"].on_heard_from(speaker_id)
+
+
+func _find_record(agent_id: String) -> Dictionary:
+	for rec in records:
+		if str(rec["player"].agent_id) == agent_id:
+			return rec
+	return {}
 
 
 func _apply_persona(persona: PersonaScript, cfg: Dictionary) -> void:
@@ -127,3 +185,12 @@ func _refresh_selection_highlight() -> void:
 	for i in records.size():
 		var p: PlayerScript = records[i]["player"]
 		p.set_selected(i == selected_index)
+
+
+func tick_co_presence() -> void:
+	for rec in records:
+		var observer: PlayerScript = rec["player"]
+		for p in comm.players_in_perception(observer):
+			if p == observer:
+				continue
+			rec["relationships"].on_co_presence(str(p.agent_id))

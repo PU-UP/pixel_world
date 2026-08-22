@@ -34,6 +34,7 @@ var _last_position: Vector2 = Vector2.ZERO
 var _last_observation_tick: int = -1
 var _observation_text: String = "(no observation yet)"
 var _heard_messages: Array = []
+var inventory: Array = []
 var action_log: Array = []
 var _selected: bool = false
 
@@ -229,6 +230,12 @@ func _pump_next_action() -> void:
 			_start_move_to(_current_action["params"]["x"], _current_action["params"]["y"])
 		AgentActions.KIND_SAY:
 			_execute_say(_current_action)
+		AgentActions.KIND_PICK_UP:
+			_execute_pick_up(_current_action)
+		AgentActions.KIND_DROP:
+			_execute_drop(_current_action)
+		AgentActions.KIND_OBSERVE:
+			_execute_observe(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -269,6 +276,70 @@ func _execute_say(action: Dictionary) -> void:
 			_log_action(tick, "say", "→ %s: %s" % [to_s, text_s])
 		else:
 			_log_action(tick, "say", "FAILED %s" % str(res.get("error", "?")))
+	_pump_next_action()
+
+
+func _execute_pick_up(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var item_id: String = str(p.get("item", ""))
+	var tick: int = _clock.current_tick() if _clock else -1
+	if _world == null or _world.state == null:
+		_log_action(tick, "pickup", "FAILED no world state")
+	else:
+		var res: Dictionary = _world.state.try_pick_up(get_tile_position(), item_id)
+		if res.get("ok", false):
+			inventory.append(str(res.get("item_id", item_id)))
+			_log_action(tick, "pickup", "got %s" % res.get("item_id", item_id))
+		else:
+			_log_action(tick, "pickup", "FAILED %s" % str(res.get("error", "?")))
+	_pump_next_action()
+
+
+func _execute_drop(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var item_id: String = str(p.get("item", ""))
+	var tick: int = _clock.current_tick() if _clock else -1
+	if not inventory.has(item_id):
+		_log_action(tick, "drop", "FAILED not carrying %s" % item_id)
+	elif _world == null or _world.state == null:
+		_log_action(tick, "drop", "FAILED no world state")
+	else:
+		inventory.erase(item_id)
+		var res: Dictionary = _world.state.try_drop(get_tile_position(), item_id)
+		if res.get("ok", false):
+			_log_action(tick, "drop", "dropped %s" % item_id)
+		else:
+			inventory.append(item_id)
+			_log_action(tick, "drop", "FAILED %s" % str(res.get("error", "?")))
+	_pump_next_action()
+
+
+func _execute_observe(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var target: String = str(p.get("target", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	var detail: String = ""
+	if _comm != null:
+		for other in _comm.players_in_perception(self):
+			if str(other.agent_id) == target:
+				var ot: Vector2i = other.get_tile_position()
+				detail = "agent %s at (%d,%d) inv=%s" % [
+					target, ot.x, ot.y, other._inventory_summary(),
+				]
+				break
+	if detail.is_empty() and _world != null and _world.state != null:
+		var found: Dictionary = _world.state.find_ground_item_near(
+			get_tile_position(), target, observation_radius_tiles
+		)
+		if not found.is_empty():
+			var it: Vector2i = found.get("tile", Vector2i.ZERO)
+			detail = "%s at (%d,%d): %s" % [
+				target, it.x, it.y, _world.state.describe_item(target),
+			]
+	if detail.is_empty():
+		_log_action(tick, "observe", "FAILED unknown/range %s" % target)
+	else:
+		_log_action(tick, "observe", detail.substr(0, 72))
 	_pump_next_action()
 
 
@@ -315,6 +386,9 @@ func _refresh_observation_if_needed() -> void:
 	_last_observation_tick = t
 	var cx: int = int(floor(global_position.x / TILE_SIZE))
 	var cy: int = int(floor(global_position.y / TILE_SIZE))
+	var region_name: String = "wilderness"
+	if _world != null and _world.state != null:
+		region_name = _world.state.region_name_at(Vector2i(cx, cy))
 	var r: int = observation_radius_tiles
 	var counts: Dictionary = {}
 	for dy in range(-r, r + 1):
@@ -335,9 +409,20 @@ func _refresh_observation_if_needed() -> void:
 			var pt: Vector2i = p.get_tile_position()
 			agent_parts.append("%s@(%d,%d)" % [str(p.agent_id), pt.x, pt.y])
 	if agent_parts.size() > 0:
-		_observation_text = "%s | agents: %s" % [terrain_text, ", ".join(agent_parts)]
+		_observation_text = "region=%s | %s | agents: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
 	else:
-		_observation_text = terrain_text
+		_observation_text = "region=%s | %s" % [region_name, terrain_text]
+	var item_parts: PackedStringArray = []
+	if _world != null and _world.state != null:
+		for item in _world.state.items_near(Vector2i(cx, cy), r):
+			var item_tile: Vector2i = item.get("tile", Vector2i.ZERO)
+			item_parts.append("%s@(%d,%d)" % [str(item.get("item_id", "?")), item_tile.x, item_tile.y])
+	if item_parts.size() > 0:
+		_observation_text += " | items: " + ", ".join(item_parts)
+	if _world.events != null:
+		var event_lines: PackedStringArray = _world.events.lines_for_tile(Vector2i(cx, cy))
+		if event_lines.size() > 0:
+			_observation_text += " | event: " + event_lines[0]
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | heard: " + "; ".join(heard)
@@ -388,10 +473,30 @@ func get_status_line() -> String:
 	var t: int = _world.tile_at(global_position) if _world != null else -1
 	var state_str: String = "WALKING" if _state == State.WALKING else "IDLE"
 	var queue_n: int = _action_queue.size()
-	return "agent=%s  state=%s  q=%d  pos=(%.1f, %.1f)  tile=(%d, %d)  terrain=%s" % [
-		str(agent_id), state_str, queue_n,
+	return "agent=%s  state=%s  q=%d  inv=%s  pos=(%.1f, %.1f)  tile=(%d, %d)  terrain=%s" % [
+		str(agent_id), state_str, queue_n, _inventory_summary(),
 		global_position.x, global_position.y, tile_x, tile_y, _tile_name(t)
 	]
+
+
+func _inventory_summary() -> String:
+	if inventory.is_empty():
+		return "empty"
+	return ",".join(inventory)
+
+
+func get_nearby_item_lines() -> PackedStringArray:
+	var lines: PackedStringArray = []
+	if _world == null or _world.state == null:
+		return lines
+	for item in _world.state.items_near(get_tile_position(), Config.world_item_pickup_radius() + 1):
+		var t: Vector2i = item.get("tile", Vector2i.ZERO)
+		lines.append("%s (%s) at (%d,%d)" % [
+			str(item.get("item_id", "")),
+			str(item.get("display_name", "")),
+			t.x, t.y,
+		])
+	return lines
 
 # ------------------------------------------------------------------
 # P2 — 工具

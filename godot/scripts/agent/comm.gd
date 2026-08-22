@@ -4,7 +4,7 @@ class_name CommRouter
 ## 通信路由 — SAY 可达性（听觉半径）与消息投递
 ##
 
-signal message_delivered(speaker_id: String, target_id: String, text: String, tick: int)
+signal message_delivered(speaker_id: String, target_id: String, text: String, tick: int, recipient_ids: Array)
 
 var _players: Array = []
 
@@ -49,7 +49,10 @@ func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: 
 		recipients.append(found)
 	for p in recipients:
 		p.receive_say(str(speaker.agent_id), text, tone, tick)
-	message_delivered.emit(str(speaker.agent_id), target, text, tick)
+	var recipient_ids: Array = []
+	for p in recipients:
+		recipient_ids.append(str(p.agent_id))
+	message_delivered.emit(str(speaker.agent_id), target, text, tick, recipient_ids)
 	return {"ok": true, "error": "", "recipients": recipients.size()}
 
 

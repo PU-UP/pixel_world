@@ -6,6 +6,8 @@ class_name GameWorld
 ##
 
 const TILE_SIZE: int = 16
+const WorldStateScript = preload("res://scripts/world/state.gd")
+const WorldEventsScript = preload("res://scripts/world/events.gd")
 var MAP_WIDTH: int = 64   # 瓦片 — 启动时从 config 覆盖
 var MAP_HEIGHT: int = 64  # 瓦片
 
@@ -20,6 +22,8 @@ const TILE_COLORS := {
 }
 
 var tiles: Array = []   # 二维 [y][x] -> Tile
+var state: WorldStateScript = null
+var events: WorldEventsScript = null
 var rng: RandomNumberGenerator
 
 func _ready() -> void:
@@ -32,6 +36,18 @@ func _ready() -> void:
 	else:
 		rng.seed = 1337
 	_generate_island()
+	state = WorldStateScript.new()
+	state.name = "WorldState"
+	add_child(state)
+	state.setup(self)
+	state.ground_item_changed.connect(_on_ground_items_changed)
+	events = WorldEventsScript.new()
+	events.name = "WorldEvents"
+	add_child(events)
+	queue_redraw()
+
+
+func _on_ground_items_changed() -> void:
 	queue_redraw()
 
 func world_size() -> Vector2:
@@ -115,3 +131,26 @@ func _draw() -> void:
 		for x in MAP_WIDTH:
 			var rect := Rect2(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
 			draw_rect(rect, TILE_COLORS[tiles[y][x]])
+	_draw_ground_items()
+
+
+func _draw_ground_items() -> void:
+	if state == null:
+		return
+	var defs: Dictionary = Config.world_item_defs()
+	for entry in state.all_ground_items():
+		var tile: Vector2i = entry.get("tile", Vector2i.ZERO)
+		var item_id: String = str(entry.get("item_id", ""))
+		var color := Color(0.95, 0.85, 0.25)
+		if defs.has(item_id):
+			var def: Dictionary = defs[item_id]
+			if def.has("color") and typeof(def["color"]) == TYPE_ARRAY:
+				var c: Array = def["color"]
+				if c.size() >= 3:
+					color = Color(float(c[0]), float(c[1]), float(c[2]))
+		var center := Vector2(
+			tile.x * TILE_SIZE + TILE_SIZE * 0.5,
+			tile.y * TILE_SIZE + TILE_SIZE * 0.5,
+		)
+		draw_circle(center, 3.0, color)
+		draw_circle(center, 3.0, Color(0, 0, 0, 0.5), false, 1.0)

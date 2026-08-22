@@ -13,6 +13,7 @@ const BASE: Dictionary = {
 	"observation": 0.15,
 	"movement": 0.2,
 	"reflection": 0.75,
+	"plan": 0.55,
 	"ambient": 0.05,
 }
 

@@ -3,3 +3,90 @@ world:
   map_width: 64
   map_height: 64
   seed: 1337
+  item_pickup_radius: 1
+
+items:
+  driftwood:
+    display_name: "Driftwood"
+    description: "A sturdy piece of driftwood from the beach."
+    color: [0.55, 0.40, 0.28]
+  seashell:
+    display_name: "Seashell"
+    description: "A pale shell washed ashore."
+    color: [0.92, 0.88, 0.82]
+  berry_bush:
+    display_name: "Wild Berries"
+    description: "Edible berries growing wild."
+    color: [0.72, 0.18, 0.35]
+  flint:
+    display_name: "Flint Stone"
+    description: "A sharp stone useful for tools."
+    color: [0.50, 0.52, 0.55]
+  rope:
+    display_name: "Coiled Rope"
+    description: "Old rope left near the ruins."
+    color: [0.62, 0.48, 0.32]
+
+ground_items:
+  - item: driftwood
+    tile: [30, 48]
+  - item: seashell
+    tile: [28, 50]
+  - item: seashell
+    tile: [35, 49]
+  - item: berry_bush
+    tile: [22, 38]
+  - item: berry_bush
+    tile: [40, 36]
+  - item: flint
+    tile: [32, 28]
+  - item: rope
+    tile: [44, 40]
+
+regions:
+  - id: south_beach
+    name: "South Beach"
+    center: [32, 50]
+    radius: 10
+  - id: central_meadow
+    name: "Central Meadow"
+    center: [32, 32]
+    radius: 14
+  - id: north_ridge
+    name: "North Ridge"
+    center: [32, 18]
+    radius: 10
+  - id: east_shore
+    name: "East Shore"
+    center: [48, 34]
+    radius: 8
+  - id: west_grove
+    name: "West Grove"
+    center: [18, 34]
+    radius: 8
+
+events:
+  - id: seabirds
+    text: "Seabirds circle low over the south beach."
+    interval_ticks: 90
+    duration_ticks: 15
+    first_tick: 25
+    regions: [south_beach]
+  - id: breeze
+    text: "A cool breeze rustles the central meadow."
+    interval_ticks: 70
+    duration_ticks: 12
+    first_tick: 15
+    regions: [central_meadow]
+  - id: ridge_wind
+    text: "Wind whistles along the north ridge."
+    interval_ticks: 100
+    duration_ticks: 14
+    first_tick: 40
+    regions: [north_ridge]
+  - id: island_calm
+    text: "The island feels unusually calm for a moment."
+    interval_ticks: 120
+    duration_ticks: 10
+    first_tick: 60
+    regions: []

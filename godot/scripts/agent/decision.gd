@@ -15,6 +15,8 @@ const LoggerScript = preload("res://scripts/observability/logger.gd")
 const PersonaScript = preload("res://scripts/agent/persona.gd")
 const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
+const AgentPlanning = preload("res://scripts/agent/planning.gd")
+const AgentRelationships = preload("res://scripts/agent/relationships.gd")
 
 var _player: Player = null
 var _clock: GameClock = null
@@ -23,6 +25,8 @@ var _logger: LoggerScript = null
 var _persona: PersonaScript = null
 var _memory: MemoryStreamScript = null
 var _comm: CommRouterScript = null
+var _planning: AgentPlanning = null
+var _relationships: AgentRelationships = null
 
 var _busy: bool = false
 var _last_raw: String = ""
@@ -39,6 +43,8 @@ func setup(
 	persona: PersonaScript,
 	memory: MemoryStreamScript,
 	comm: CommRouterScript = null,
+	planning: AgentPlanning = null,
+	relationships: AgentRelationships = null,
 ) -> void:
 	_player = player
 	_clock = clock
@@ -47,6 +53,8 @@ func setup(
 	_persona = persona
 	_memory = memory
 	_comm = comm
+	_planning = planning
+	_relationships = relationships
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -91,6 +99,9 @@ func _request_decision() -> void:
 	var memory_lines := _format_memories(retrieved)
 	var nearby_ids := _nearby_agent_ids()
 	var heard_lines := _player.get_recent_heard_lines(4)
+	var plan_lines := _planning.get_remaining_steps() if _planning else PackedStringArray()
+	var rel_lines := _relationships.format_for_decision(nearby_ids) if _relationships else PackedStringArray()
+	var item_lines := _player.get_nearby_item_lines()
 	var messages: Array = DecisionPrompt.build_messages(
 		_persona.describe(),
 		guard["text"],
@@ -99,6 +110,9 @@ func _request_decision() -> void:
 		memory_lines,
 		nearby_ids,
 		heard_lines,
+		plan_lines,
+		rel_lines,
+		item_lines,
 	)
 	_busy = true
 	_last_error = ""
@@ -143,6 +157,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 				0.0,
 				0.4,
 			)
+			if _planning:
+				_planning.advance_step()
 	else:
 		_last_action = {}
 		_last_error = parsed["error"]

@@ -34,3 +34,24 @@ memory:
     importance_weight: 0.2
   hud:
     display_limit: 50
+
+planning:
+  trigger_ticks: 50
+  max_steps: 7
+
+relationships:
+  greet_familiarity: 0.35
+  on_say_to:
+    familiarity: 0.06
+    affinity: 0.04
+    trust: 0.02
+  on_heard:
+    familiarity: 0.04
+    affinity: 0.02
+    trust: 0.01
+  on_co_presence:
+    familiarity: 0.01
+
+persona_drift:
+  max_per_trait: 0.15
+  reflection_jitter: 0.02

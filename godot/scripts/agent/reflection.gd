@@ -100,6 +100,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	_memory.append_event("reflection", text, int(meta.get("tick", _clock.current_tick())), 0.6, 0.0, 0.5)
 	_memory.reset_event_count()
 	_ticks_since_reflection = 0
+	var social_n := _count_social_memories()
+	_persona.apply_reflection_drift(social_n)
 	reflection_done.emit(int(meta.get("tick", -1)), text)
 
 
@@ -116,3 +118,15 @@ func _extract_text(body: Dictionary) -> String:
 	if choices.is_empty():
 		return ""
 	return str(choices[0].get("message", {}).get("content", "")).strip_edges()
+
+
+func _count_social_memories() -> int:
+	var recent := _memory.get_recent(20)
+	var n := 0
+	for mem in recent:
+		var cat := str(mem.get("category", ""))
+		if cat in ["action", "decision"]:
+			var txt := str(mem.get("text", ""))
+			if "SAY" in txt or "say" in txt or "heard" in txt:
+				n += 1
+	return n

@@ -1,7 +1,7 @@
 extends Node2D
 ##
 ## Pixel World — 入口
-## P5: 多 agent + SAY 通信
+## P6: 规划 + 关系 + 性格漂移
 ##
 
 const WorldScript = preload("res://scripts/world/world.gd")
@@ -11,6 +11,7 @@ const LlmClientScript = preload("res://scripts/llm/client.gd")
 const LoggerScript = preload("res://scripts/observability/logger.gd")
 const CoordinatorScript = preload("res://scripts/agent/coordinator.gd")
 const DecisionScript = preload("res://scripts/agent/decision.gd")
+const MinimapScript = preload("res://scripts/ui/minimap.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
@@ -30,11 +31,18 @@ enum ControlMode { MANUAL, AGENT }
 @onready var _hud_memory_title: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader/MemoryTitle
 @onready var _hud_reflection: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/ReflectionScroll/ReflectionLabel
 @onready var _hud_memory: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryScroll/MemoryLabel
+@onready var _relation_panel: PanelContainer = $HUD/Root/HBox/RelationPanel
+@onready var _hud_relation_title: Label = $HUD/Root/HBox/RelationPanel/RelationVBox/RelationHeader/RelationTitle
+@onready var _hud_plan: Label = $HUD/Root/HBox/RelationPanel/RelationVBox/PlanScroll/PlanLabel
+@onready var _hud_relations: Label = $HUD/Root/HBox/RelationPanel/RelationVBox/RelationScroll/RelationLabel
 @onready var _llm: LlmClientScript = $LlmClient
 @onready var _logger: LoggerScript = $ObservabilityLogger
+@onready var _minimap: MinimapScript = $HUD/MinimapPanel
 
 var _debug_visible: bool = true
 var _memory_visible: bool = false
+var _relation_visible: bool = false
+var _minimap_visible: bool = false
 var _control_mode: int = ControlMode.MANUAL
 
 
@@ -43,7 +51,12 @@ func _ready() -> void:
 	_camera.position_smoothing_enabled = true
 	_hud.visible = _debug_visible
 	_memory_panel.visible = _memory_visible
+	_relation_panel.visible = _relation_visible
+	_minimap.setup(_world)
+	_minimap.visible = _minimap_visible and _debug_visible
 	_coordinator.setup(_world, _clock, _llm, _logger, _agents_root, self)
+	_llm.set_logger(_logger)
+	_world.events.setup(_world, _clock)
 	_coordinator.roster_changed.connect(_on_roster_changed)
 	_connect_decision_signals()
 	_set_control_mode(_control_mode_from_config())
@@ -56,6 +69,8 @@ func _connect_decision_signals() -> void:
 			decision.decision_made.connect(_on_decision_made)
 		if not rec["reflection"].reflection_done.is_connected(_on_reflection_done):
 			rec["reflection"].reflection_done.connect(_on_reflection_done)
+		if not rec["planning"].plan_updated.is_connected(_on_plan_updated):
+			rec["planning"].plan_updated.connect(_on_plan_updated)
 
 
 func _on_roster_changed() -> void:
@@ -64,6 +79,9 @@ func _on_roster_changed() -> void:
 		_update_hud()
 	if _memory_visible:
 		_update_memory_hud()
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()
 
 
 func _process(_delta: float) -> void:
@@ -74,6 +92,9 @@ func _process(_delta: float) -> void:
 		_update_hud()
 	if _memory_visible:
 		_update_memory_hud()
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()
 
 
 func _control_mode_from_config() -> int:
@@ -107,18 +128,29 @@ func _selected_decision() -> DecisionScript:
 	return rec["decision"]
 
 
+func _refresh_minimap() -> void:
+	if not _minimap_visible or _minimap == null:
+		return
+	var agents: Array = []
+	for rec in _coordinator.records:
+		agents.append(rec["player"])
+	_minimap.set_agents(agents)
+
+
 func _update_hud() -> void:
 	var pause_str: String = "PAUSED" if _clock.paused else "RUNNING"
 	var llm_str := "LLM:ok" if _llm.is_configured() else "LLM:no-key"
 	if _llm.is_configured():
 		llm_str = "LLM:%d/%d" % [_llm.inflight_count(), _llm.inflight_count() + _llm.queue_length()]
+	var tok: int = int(_logger.stats().get("tokens_total", 0))
 	var roster: String = "%d/%d" % [_coordinator.selected_index + 1, _coordinator.spawn_count()]
-	_hud_status.text = "FPS:%d tick:%d %s %s %s #%s" % [
+	_hud_status.text = "FPS:%d tick:%d %s %s %s tok:%d #%s" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
 		_control_mode_label(),
 		llm_str,
+		tok,
 		roster,
 	]
 	var selected: PlayerScript = _current_agent()
@@ -155,6 +187,27 @@ func _update_memory_hud() -> void:
 	_hud_memory.text = rec["memory"].format_for_hud(limit, "[%s]" % agent_label)
 
 
+func _update_relation_hud() -> void:
+	var rec := _selected_record()
+	if rec.is_empty():
+		_hud_relation_title.text = "RELATIONS  (F5 close)"
+		_hud_plan.text = "(none)"
+		_hud_relations.text = "(empty)"
+		return
+	var player: PlayerScript = rec["player"]
+	var persona = rec["persona"]
+	var agent_label := str(player.agent_id)
+	_hud_relation_title.text = "REL — %s (%s)  F5" % [persona.display_name, agent_label]
+	var plan_steps: PackedStringArray = rec["planning"].get_remaining_steps()
+	if plan_steps.is_empty():
+		_hud_plan.text = _truncate(rec["planning"].get_last_plan_text(), 200)
+	else:
+		_hud_plan.text = _truncate("\n".join(plan_steps), 200)
+	var rel_text: String = rec["relationships"].format_for_hud(_coordinator.all_agent_ids())
+	var network: String = rec["relationships"].format_network_ascii(_coordinator.all_agent_ids())
+	_hud_relations.text = "%s\n\n%s" % [network, rel_text]
+
+
 func _truncate(text: String, max_len: int) -> String:
 	if text.length() <= max_len:
 		return text
@@ -166,11 +219,23 @@ func _on_decision_made(_tick: int, _raw: String, _action: Dictionary, _result: D
 		_update_hud()
 	if _memory_visible:
 		_update_memory_hud()
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()
 
 
 func _on_reflection_done(_tick: int, _text: String) -> void:
 	if _memory_visible:
 		_update_memory_hud()
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()
+
+
+func _on_plan_updated(_tick: int, _steps: Array) -> void:
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -179,14 +244,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		_hud.visible = _debug_visible
 		if not _debug_visible:
 			_memory_panel.visible = false
+			_relation_panel.visible = false
+			_minimap.visible = false
 		else:
 			_memory_panel.visible = _memory_visible
+			_relation_panel.visible = _relation_visible
+			_minimap.visible = _minimap_visible
+	elif event.is_action_pressed("toggle_minimap"):
+		_minimap_visible = not _minimap_visible
+		_minimap.visible = _minimap_visible and _debug_visible
+		if _minimap_visible:
+			_refresh_minimap()
 	elif event.is_action_pressed("toggle_memory"):
 		_memory_visible = not _memory_visible
 		_memory_panel.visible = _memory_visible and _debug_visible
 		if _memory_visible:
 			_update_memory_hud()
+	elif event.is_action_pressed("toggle_relationships"):
+		_relation_visible = not _relation_visible
+		_relation_panel.visible = _relation_visible and _debug_visible
+		if _relation_visible:
+			_update_relation_hud()
 	elif event.is_action_pressed("quit"):
+		_logger.write_session_summary({"exit": "user_quit"})
 		get_tree().quit()
 	elif event.is_action_pressed("toggle_pause"):
 		_clock.paused = not _clock.paused
@@ -196,6 +276,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_coordinator.cycle_selection()
 		if _memory_visible:
 			_update_memory_hud()
+		if _relation_visible:
+			_update_relation_hud()
 	elif event.is_action_pressed("toggle_control_mode"):
 		_set_control_mode(ControlMode.MANUAL if _control_mode == ControlMode.AGENT else ControlMode.AGENT)
 	elif _control_mode == ControlMode.MANUAL:
