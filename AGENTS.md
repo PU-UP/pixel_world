@@ -116,94 +116,98 @@ for each agent in parallel (with throttle):
 
 ---
 
-## 3. 项目结构（git 工程布局）
+## 3. 项目结构（git 工程布局，Godot 4 主线）
+
+> Godot 4 是工程基座;LLM 客户端、agent 推理、记忆、反思、行动原语、tick 调度都写在 GDScript 里,
+> 通过 `HTTPRequest` 调 MiniMax OpenAI 兼容 API。
+> **若到 P4 阶段 GDScript 写向量检索/复杂文本处理太重,允许把 LLM 客户端迁到独立 Python 微服务,
+> Godot 通过 HTTP/JSON 调**,结构会拆为 `godot/` + `server/` 两块(详见 §10 备注)。
 
 ```
 D:\Projects\pixel_world\
-├── AGENTS.md                  ← 本文件
+├── AGENTS.md                  ← 本文件(宪法)
 ├── README.md
 ├── LICENSE
-├── pyproject.toml             ← Python 项目元数据 / 依赖
 ├── .gitignore
-├── .env.example               ← LLM API key 等
-├── config/
+├── .env.example               ← MiniMax API key(走 env,不进 git)
+│
+├── config/                    ← YAML 配置(被 GDScript 读取)
 │   ├── world.yaml             ← 地图、初始 NPC、物品、世界常量
 │   ├── agents.yaml            ← agent 名单、人格基线、出生点
 │   ├── llm.yaml               ← 模型、温度、token、限流
 │   └── runtime.yaml           ← tick 速度、反思/规划频率、调试开关
 │
-├── assets/                    ← 美术/音效
-│   ├── tilesets/
-│   ├── sprites/
-│   ├── ui/
-│   └── audio/
+├── godot/                     ← Godot 4 工程根
+│   ├── project.godot
+│   ├── icon.svg
+│   ├── export_presets.cfg
+│   ├── scenes/                ← .tscn 场景
+│   │   ├── Main.tscn
+│   │   ├── World.tscn
+│   │   └── entities/
+│   │       └── Player.tscn
+│   ├── scripts/               ← .gd 脚本
+│   │   ├── main.gd            ← 入口 / 主循环
+│   │   ├── world/
+│   │   │   ├── tilemap.gd
+│   │   │   ├── physics.gd
+│   │   │   ├── pathfinding.gd ← A*
+│   │   │   ├── clock.gd       ← tick / 日夜
+│   │   │   ├── events.gd      ← 事件总线
+│   │   │   └── state.gd       ← 权威世界状态
+│   │   ├── agent/
+│   │   │   ├── persona.gd
+│   │   │   ├── perception.gd
+│   │   │   ├── memory/
+│   │   │   │   ├── stream.gd
+│   │   │   │   ├── store.gd     ← SQLite(GDSQLite 插件)
+│   │   │   │   └── importance.gd
+│   │   │   ├── reflection.gd
+│   │   │   ├── planning.gd
+│   │   │   ├── decision.gd      ← LLM 决策核心
+│   │   │   ├── actions.gd       ← 行动原语定义
+│   │   │   └── executor.gd      ← 原语执行器
+│   │   ├── llm/
+│   │   │   ├── client.gd        ← HTTPRequest → MiniMax (OpenAI 兼容)
+│   │   │   ├── prompts/         ← 模板(.tres 或 .gd const)
+│   │   │   ├── parser.gd        ← 解析 LLM 输出为 action
+│   │   │   └── guard.gd         ← prompt 注入防御
+│   │   ├── observability/
+│   │   │   ├── logger.gd
+│   │   │   └── replay.gd
+│   │   └── ui/
+│   ├── assets/                 ← 美术/音效
+│   │   ├── tilesets/
+│   │   ├── sprites/
+│   │   ├── ui/
+│   │   └── audio/
+│   └── addons/                 ← 第三方插件(GDSQLite 等)
 │
-├── data/                      ← 运行时生成的数据(不进 git)
-│   ├── saves/                 ← 存档
-│   ├── memory/                ← agent 记忆库(SQLite + 向量)
+├── data/                      ← 运行时数据(不进 git)
+│   ├── saves/
+│   ├── memory/                ← agent 记忆库
 │   ├── logs/                  ← 观测日志
 │   └── replays/
 │
-├── src/
-│   ├── engine/                ← 引擎层(Pygame/Godot 绑定)
-│   │   ├── game.py
-│   │   ├── renderer.py
-│   │   ├── camera.py
-│   │   ├── input.py
-│   │   └── ui.py
-│   │
-│   ├── world/                 ← 世界层
-│   │   ├── map.py             ← 瓦片地图
-│   │   ├── tiles.py
-│   │   ├── physics.py
-│   │   ├── pathfinding.py     ← A*
-│   │   ├── clock.py           ← tick / 日夜
-│   │   ├── events.py          ← 事件总线
-│   │   └── state.py           ← 权威世界状态
-│   │
-│   ├── agent/                 ← agent 运行时
-│   │   ├── persona.py
-│   │   ├── perception.py
-│   │   ├── memory/
-│   │   │   ├── stream.py      ← 记忆流
-│   │   │   ├── store.py       ← SQLite
-│   │   │   ├── vector.py      ← 向量索引
-│   │   │   └── importance.py
-│   │   ├── reflection.py
-│   │   ├── planning.py
-│   │   ├── decision.py        ← LLM 决策核心
-│   │   ├── actions.py         ← 行动原语定义
-│   │   └── executor.py        ← 原语执行器
-│   │
-│   ├── llm/                   ← LLM 适配层
-│   │   ├── client.py          ← OpenAI / Ollama / Anthropic 统一接口
-│   │   ├── prompts/           ← 模板(可版本化)
-│   │   ├── parser.py          ← 解析 LLM 输出为 action
-│   │   └── guard.py           ← prompt 注入防御
-│   │
-│   ├── observability/         ← 观测 / 评估
-│   │   ├── logger.py
-│   │   ├── metrics.py
-│   │   └── replay.py
-│   │
-│   └── main.py                ← 入口
+├── tools/                     ← 一次性工具(Godot CLI 脚本或 headless 跑)
+│   ├── seed_agents.gd
+│   ├── inspect_memory.gd
+│   └── replay_session.gd
 │
-├── tools/                     ← 一次性工具脚本
-│   ├── seed_agents.py         ← 创建 agent
-│   ├── inspect_memory.py      ← 查看某个 agent 的记忆
-│   └── replay_session.py      ← 重放某次会话
-│
-├── tests/
-│   ├── test_pathfinding.py
-│   ├── test_actions.py
-│   ├── test_memory.py
-│   └── test_simulation.py     ← 端到端: 多 agent 跑 N tick
+├── tests/                     ← GUT / gdUnit4 单元测试
+│   ├── test_pathfinding.gd
+│   ├── test_actions.gd
+│   ├── test_memory.gd
+│   └── test_simulation.gd
 │
 └── docs/
-    ├── architecture.md        ← 详细架构(本文件扩展)
-    ├── action_schema.md       ← 行动原语规范
-    └── design_notes.md        ← 设计取舍记录
+    ├── architecture.md
+    ├── action_schema.md
+    └── design_notes.md
 ```
+
+> **为什么工程根不放 `project.godot`?** 留出顶层放 `config/ docs/ tools/ data/` 这类"与引擎无关"的资产。
+> Godot 工程本体内嵌在 `godot/` 子目录,IDE 打开 `D:\Projects\pixel_world\godot\project.godot` 即可。
 
 ---
 
@@ -280,17 +284,17 @@ top_k = retrieve(
 
 ## 6. 迭代阶段（建议节奏）
 
-| 阶段 | 目标 | 验收 | 估时 |
-|---|---|---|---|
-| **P0 - 工程基线** | git init + 项目结构 + CI/测试框架 | `pytest` 通过空项目 | 半天 |
-| **P1 - 渲染 + 单 agent 移动** | 能在地图上画一个 sprite,键盘控制移动,带相机 | 能走能看 | 2 天 |
-| **P2 - 寻路 + 行动原语骨架** | A*、原语定义、键盘→原语映射 | 鼠标点哪走哪 | 2 天 |
-| **P3 - LLM 决策闭环** | 单 agent 接 LLM,一次决策→一个原语→执行 | agent 能"想"去哪 | 3 天 |
-| **P4 - 记忆 + 反思** | SQLite + 向量 + 反思触发 | agent 记得"昨天见过谁" | 3 天 |
-| **P5 - 多 agent + 通信** | N 个 agent 跑同一世界,`SAY` 可达 | 两人能对话 | 3 天 |
-| **P6 - 规划 + 关系** | Planning + 关系字段 + 性格漂移 | 看到熟人主动打招呼 | 3 天 |
-| **P7 - 完整地图 + 物品 + 事件** | 荒岛美术、物品、可交互物体、世界事件 | demo 可玩 | 5 天 |
-| **P8 - 观测/回放/护栏** | 观测日志、重放工具、prompt 注入防御 | 可调试 | 2 天 |
+| 阶段 | 目标 | 验收 | 估时 | 状态 |
+|---|---|---|---|---|
+| **P0 - 工程基线** | git init + 项目结构 + AGENTS.md + CI/测试框架 | Godot 工程能空跑 + GUT 一个 smoke test 通过 | 半天 | ✅ 已完成 |
+| **P1 - 渲染 + 单 agent 移动** | 能在地图上画一个 sprite,键盘控制移动,带相机 | WASD 移动 + 相机跟随 + 简易瓦片地图 | 2 天 | ⏳ 即将开始 |
+| **P2 - 寻路 + 行动原语骨架** | A*、原语定义、键盘→原语映射 | 鼠标点哪走哪;`MOVE_TO` 原语可触发 | 2 天 | ⏳ |
+| **P3 - LLM 决策闭环** | 单 agent 接 MiniMax LLM,一次决策→一个原语→执行 | agent 能"想"去哪并执行 | 3 天 | ⏳ |
+| **P4 - 记忆 + 反思** | SQLite + 反思触发 | agent 记得"昨天见过谁" | 3 天 | ⏳ |
+| **P5 - 多 agent + 通信** | 5 个 agent 跑同一世界,`SAY` 可达 | 两人能对话 | 3 天 | ⏳ |
+| **P6 - 规划 + 关系** | Planning + 关系字段 + 性格漂移 | 看到熟人主动打招呼 | 3 天 | ⏳ |
+| **P7 - 完整地图 + 物品 + 事件** | 荒岛美术、物品、可交互物体、世界事件 | demo 可玩 | 5 天 | ⏳ |
+| **P8 - 观测/回放/护栏** | 观测日志、重放工具、prompt 注入防御 | 可调试 | 2 天 | ⏳ |
 
 总计约 **25-30 天**(单人)。
 
@@ -317,18 +321,21 @@ memory:
     recency_weight: 0.3
 
 llm:
-  provider: openai            # openai | ollama | anthropic
-  model: gpt-4o-mini
+  provider: minimax           # minimax(OpenAI 兼容) | openai | ollama | anthropic
+  base_url: https://api.minimax.chat/v1
+  model: MiniMax-Text-01      # 占位,实际取值以 MiniMax 控制台为准
   temperature: 0.7
   max_tokens: 400
   timeout_s: 20
   retry: 2
+  max_concurrent: 4
+  api_key_env: MINIMAX_API_KEY
 
 agent:
   max_ticks_per_decision: 1   # 一次决策最多执行几个原语
   perception_radius: 6
   audio_radius: 10
-  starting_agents: 5
+  starting_agents: 1          # P3 阶段保持 1,P5 改为 5
 ```
 
 ---
@@ -337,10 +344,11 @@ agent:
 
 - **Git 流程**：trunk-based, 短分支, 每天 rebase, PR 描述贴 demo 截图/日志
 - **Conventional Commits**：`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
-- **测试**：核心系统(寻路/原语/记忆/时间)必须有单元测试
+- **测试**：核心系统(寻路/原语/记忆/时间)必须有单元测试,使用 **GUT** 或 **gdUnit4**;CI 用 `--headless --test` 跑 Godot 测试
 - **观测优先**：每个 PR 必须包含一次"跑 100 tick 观察"的日志
-- **Prompt 版本化**：`src/llm/prompts/*.j2` 进 git, 改 prompt 算 feat
-- **不可提交**：`data/`, `.env`, 任何 API key, 任何 LLM 原始回复缓存
+- **Prompt 版本化**：`godot/scripts/llm/prompts/*` 进 git, 改 prompt 算 feat
+- **不可提交**：`data/`, `.env`, `*.db`, 任何 API key, 任何 LLM 原始回复缓存
+- **Godot 工程子目录**:`godot/`,所有引擎相关代码/资源在它下面;`config/` `data/` `docs/` `tools/` `tests/` 留在顶层,与引擎解耦
 
 ---
 
@@ -354,17 +362,25 @@ agent:
 
 ---
 
-## 10. 待确认的关键决策
+## 10. 已决议的关键决策
 
-> 在动手 P1 之前,以下决策需要 owner 拍板。AI 助手会就这些提问,owner 一旦定下就写进本文件作为"已决议"。
+| 决策项 | 选定 | 备注 / 风险预案 |
+|---|---|---|
+| **引擎** | ✅ Godot 4 + GDScript | 单语言栈,IDE 打开 `godot/project.godot`。<br>⚠️ 风险: GDScript 写向量检索/复杂文本处理偏弱。<br>🔁 备选: P4 阶段若需要,把 LLM 客户端迁到独立 Python 微服务,工程拆为 `godot/`(前端 + 渲染 + 世界状态权威) + `server/`(LLM + 记忆 + 反思 + 调度),Godot 用 HTTP/JSON 调。**P1-P3 不动**。 |
+| **LLM 接入** | ✅ MiniMax Token Plan (OpenAI 兼容) | `https://api.minimax.chat/v1/chat/completions`,key 走 `.env`。使用 `tools`/`function_calling` 强制 agent 只能输出合法 action。 |
+| **美术** | ✅ Open Source 像素 tileset | itch.io / OpenGameArt 上 GBA 风格 16x16 资源,优先可商用许可;允许先用占位纯色块跑通,后期替换。 |
+| **起步规模** | ✅ 先 1 个 agent 跑通闭环,再扩到 5 个 | P3 完成前必须只有 1 个 agent(单测思维);P5 横向复制到 5 个,验证并发限流和 SAY 路由。 |
+| **玩家角色** | ⏳ 待定 | 建议: 默认旁观者 + 可切换"操控其中 1 个 agent",跟"agent 是人"的世界观保持一致。 |
+| **地图大小** | ⏳ 待定 | 建议起步 64x64 瓦片(约 4 个屏幕视野),P7 再分多区(森林/沙滩/山地/洞穴/水域/废墟)。 |
+| **运行模式** | ✅ 本地单机 | Godot 直接本地跑;P5 后若需要再开"远程观察窗口"(只读订阅 tick 流)。 |
 
-1. **引擎**: Godot 4 (GDScript/C#) / Pygame (Python) / Unity (C#) / 其他
-2. **LLM**: OpenAI / Anthropic / Ollama 本地 / 混合
-3. **美术资源**: 自制 / 用 free tileset / 用 AI 生成占位 / 混用
-4. **初始 agent 数**: 3 / 5 / 10
-5. **玩家角色**: 旁观者 / 操控一个 agent / 可切换
-6. **地图大小**: 32x32 起步 / 64x64 / 更大
-7. **运行模式**: 本地单机 / 多机联网 / 仅服务器渲染
+### 10.1 已锁定的硬性约束（基于上述决议）
+
+1. **所有 agent 输出必须走 OpenAI 兼容 `tools`/`function_calling`**,不能允许裸 JSON 自由回答 → 见 §4 行动原语。
+2. **LLM 调用总并发 ≤ `llm.yaml.llm_concurrency`(默认 4)**,超出排队。
+3. **每次 LLM 调用后必须立刻把 prompt+raw_output+parsed_action 落 `data/logs/`**,用于回放和注入攻击排查。
+4. **`.env` 与 `data/` 一律不进 git**,见 `.gitignore`。
+5. **美术资源若来自非完全商用许可,必须在 `assets/<来源>/LICENSE` 注明**。
 
 ---
 
