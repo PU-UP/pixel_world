@@ -44,11 +44,54 @@ var _path_idx: int = 0                  # 下一个要走的路径点索引
 
 # ---- Debug draw ----
 var _debug_path: PackedVector2Array = PackedVector2Array()
+var _pending_spawn: Variant = null
 
 # ------------------------------------------------------------------
 # 生命周期
 # ------------------------------------------------------------------
+func is_busy() -> bool:
+	return _state == State.WALKING
+
+
+func get_tile_position() -> Vector2i:
+	return Vector2i(
+		int(floor(global_position.x / TILE_SIZE)),
+		int(floor(global_position.y / TILE_SIZE))
+	)
+
+
+func apply_agent_config(cfg: Dictionary) -> void:
+	if cfg.is_empty():
+		return
+	if cfg.has("id"):
+		agent_id = StringName(str(cfg["id"]))
+	if cfg.has("display_name"):
+		display_name = str(cfg["display_name"])
+	if cfg.has("spawn_tile"):
+		_pending_spawn = cfg["spawn_tile"]
+
+
+func _relocate_spawn() -> void:
+	var tile := Vector2i(32, 32)
+	if _pending_spawn != null and typeof(_pending_spawn) == TYPE_ARRAY and _pending_spawn.size() >= 2:
+		tile = Vector2i(int(_pending_spawn[0]), int(_pending_spawn[1]))
+	if _world != null and not _world.is_walkable_tile(tile):
+		tile = _find_nearest_walkable_tile(tile)
+	global_position = Vector2(tile.x * TILE_SIZE + TILE_SIZE * 0.5, tile.y * TILE_SIZE + TILE_SIZE * 0.5)
+	_last_position = global_position
+
+
+func _apply_runtime_config() -> void:
+	var agent_cfg: Dictionary = Config.runtime.get("agent", {})
+	observation_radius_tiles = int(agent_cfg.get("perception_radius", observation_radius_tiles))
+	observation_refresh_ticks = int(agent_cfg.get("observation_refresh_ticks", observation_refresh_ticks))
+	action_log_max = int(agent_cfg.get("action_log_max", action_log_max))
+	move_speed_px = float(agent_cfg.get("move_speed_px", move_speed_px))
+
+
 func _ready() -> void:
+	_apply_runtime_config()
+	apply_agent_config(Config.agent_config())
 	var img := Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
 	img.fill(body_color)
 	for px in 4:
@@ -66,22 +109,11 @@ func _ready() -> void:
 	var tex := ImageTexture.create_from_image(img)
 	$Sprite2D.texture = tex
 	_last_position = global_position
-	# 起始状态: 玩家走到中心草地上(seed 1337 中心可能撞山, 选最近可走)
-	var center_tile := Vector2i(32, 32)
-	if _world != null and not _world.is_walkable_tile(center_tile):
-		center_tile = _find_nearest_walkable_tile(center_tile)
-	global_position = Vector2(center_tile.x * TILE_SIZE, center_tile.y * TILE_SIZE)
-	_last_position = global_position
 
 func bind_world(world) -> void:
 	_world = world
-	# 重定位到最近可走 tile
 	if is_inside_tree():
-		var t := Vector2i(32, 32)
-		if not _world.is_walkable_tile(t):
-			t = _find_nearest_walkable_tile(t)
-		global_position = Vector2(t.x * TILE_SIZE, t.y * TILE_SIZE)
-		_last_position = global_position
+		_relocate_spawn()
 
 func bind_clock(clock) -> void:
 	_clock = clock
@@ -101,7 +133,7 @@ func enqueue_action(action: Dictionary) -> void:
 		printerr("[Player] kind not implemented in P2: ", action["kind"])
 		return
 	_action_queue.append(action)
-	_log_action(_clock.current_tick() if _clock else -1, "enqueue", AgentActions.to_string(action))
+	_log_action(_clock.current_tick() if _clock else -1, "enqueue", AgentActions.format_action(action))
 	if _state == State.IDLE:
 		_pump_next_action()
 

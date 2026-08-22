@@ -117,13 +117,19 @@ static func validate(action: Dictionary) -> Dictionary:
 	for f in schema["required"]:
 		if not params.has(f):
 			return {"ok": false, "error": "missing param '%s' for %s" % [f, kind]}
-	# 类型检查
+	# 类型检查（LLM 常返回 float 坐标，自动转为 int）
 	for f in schema["types"]:
 		if not params.has(f):
-			continue  # 必填已查, 这里只查类型
+			continue
 		var expected: int = schema["types"][f]
-		if typeof(params[f]) != expected:
-			return {"ok": false, "error": "param '%s' type mismatch (want %d got %d)" % [f, expected, typeof(params[f])]}
+		var actual_type: int = typeof(params[f])
+		if actual_type != expected:
+			if expected == TYPE_INT and actual_type == TYPE_FLOAT:
+				params[f] = int(params[f])
+			elif expected == TYPE_STRING and actual_type in [TYPE_INT, TYPE_FLOAT, TYPE_BOOL]:
+				params[f] = str(params[f])
+			else:
+				return {"ok": false, "error": "param '%s' type mismatch (want %d got %d)" % [f, expected, actual_type]}
 	return {"ok": true, "error": ""}
 
 ## 计算一个 action 的总 tick 消耗
@@ -143,8 +149,8 @@ static func tick_cost(action: Dictionary, path_length: int = 1) -> int:
 static func make_move_to(x: int, y: int) -> Dictionary:
 	return {"kind": KIND_MOVE_TO, "params": {"x": x, "y": y}}
 
-## 调试: action -> 字符串
-static func to_string(action: Dictionary) -> String:
+## 调试: action -> 字符串 (勿命名为 to_string, 会与 Object 内置方法冲突)
+static func format_action(action: Dictionary) -> String:
 	if not action.has("kind"):
 		return "(invalid action: no kind)"
 	return "[%s] %s" % [action["kind"], str(action.get("params", {}))]

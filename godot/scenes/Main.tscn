@@ -1,9 +1,13 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="2_world"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="3_player"]
 [ext_resource type="Script" path="res://scripts/world/clock.gd" id="4_clock"]
+[ext_resource type="Script" path="res://scripts/agent/persona.gd" id="5_persona"]
+[ext_resource type="Script" path="res://scripts/llm/client.gd" id="6_llm"]
+[ext_resource type="Script" path="res://scripts/observability/logger.gd" id="7_logger"]
+[ext_resource type="Script" path="res://scripts/agent/decision.gd" id="8_decision"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
 size = Vector2(14, 14)
@@ -32,20 +36,32 @@ position_smoothing_speed = 8.0
 [node name="GameClock" type="Node" parent="."]
 script = ExtResource("4_clock")
 
+[node name="Persona" type="Node" parent="."]
+script = ExtResource("5_persona")
+
+[node name="LlmClient" type="Node" parent="."]
+script = ExtResource("6_llm")
+
+[node name="ObservabilityLogger" type="Node" parent="."]
+script = ExtResource("7_logger")
+
+[node name="AgentDecision" type="Node" parent="."]
+script = ExtResource("8_decision")
+
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="Panel" type="Panel" parent="HUD"]
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 472.0
-offset_bottom = 200.0
+offset_bottom = 260.0
 modulate = Color(0, 0, 0, 0.5)
 
 [node name="VBox" type="VBoxContainer" parent="HUD"]
 offset_left = 16.0
 offset_top = 12.0
 offset_right = 472.0
-offset_bottom = 196.0
+offset_bottom = 256.0
 
 [node name="StatusLabel" type="Label" parent="HUD/VBox"]
 text = "FPS: 0  tick: 0"
@@ -72,6 +88,14 @@ theme_override_font_sizes/font_size = 11
 [node name="ActionLogLabel" type="Label" parent="HUD/VBox"]
 text = "recent actions:"
 theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="DecisionLabel" type="Label" parent="HUD/VBox"]
+text = "decision: (none)"
+autowrap_mode = 3
+theme_override_colors/font_color = Color(1, 0.8, 0.95, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 11

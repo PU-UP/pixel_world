@@ -1,0 +1,9 @@
+agents:
+  - id: player
+    display_name: Explorer
+    spawn_tile: [32, 32]
+    persona:
+      curiosity: 0.7
+      sociability: 0.5
+      bravery: 0.6
+    biography: "A curious explorer who just arrived on a mysterious island."

@@ -15,4 +15,7 @@ class_name Persona
 @export var starting_biography: String = ""
 
 func describe() -> String:
-	return "[%s] %s — traits=%s" % [agent_id, display_name, str(base_traits)]
+	var bio := ""
+	if not starting_biography.is_empty():
+		bio = " — %s" % starting_biography
+	return "[%s] %s%s — traits=%s" % [agent_id, display_name, bio, str(base_traits)]

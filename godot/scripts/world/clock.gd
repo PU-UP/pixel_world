@@ -13,6 +13,9 @@ var _accumulator: float = 0.0
 var _tick_index: int = 0
 var paused: bool = false
 
+func _ready() -> void:
+	tick_hz = Config.tick_hz()
+
 func _process(delta: float) -> void:
 	if paused:
 		return

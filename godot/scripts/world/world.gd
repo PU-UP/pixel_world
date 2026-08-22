@@ -6,8 +6,8 @@ class_name GameWorld
 ##
 
 const TILE_SIZE: int = 16
-const MAP_WIDTH: int = 64   # 瓦片
-const MAP_HEIGHT: int = 64  # 瓦片
+var MAP_WIDTH: int = 64   # 瓦片 — 启动时从 config 覆盖
+var MAP_HEIGHT: int = 64  # 瓦片
 
 # 地形调色板（占位色 — P7 替换为 tileset）
 enum Tile { GRASS = 0, SAND = 1, WATER = 2, TREE = 3, MOUNTAIN = 4 }
@@ -24,7 +24,13 @@ var rng: RandomNumberGenerator
 
 func _ready() -> void:
 	rng = RandomNumberGenerator.new()
-	rng.seed = 1337  # 可复现:同一 seed 永远生成同一张岛
+	var cfg := Config.world_cfg
+	if cfg.size() > 0:
+		MAP_WIDTH = int(cfg.get("map_width", MAP_WIDTH))
+		MAP_HEIGHT = int(cfg.get("map_height", MAP_HEIGHT))
+		rng.seed = int(cfg.get("seed", 1337))
+	else:
+		rng.seed = 1337
 	_generate_island()
 	queue_redraw()
 

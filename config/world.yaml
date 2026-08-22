@@ -1,0 +1,5 @@
+world:
+  tile_size: 16
+  map_width: 64
+  map_height: 64
+  seed: 1337
