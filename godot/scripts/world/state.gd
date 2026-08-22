@@ -17,6 +17,10 @@ func setup(world: GameWorld) -> void:
 	_spawn_ground_items()
 
 
+func reset() -> void:
+	_spawn_ground_items()
+
+
 func region_name_at(tile: Vector2i) -> String:
 	return str(region_at(tile).get("name", "wilderness"))
 

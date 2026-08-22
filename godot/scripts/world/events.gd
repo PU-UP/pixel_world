@@ -20,6 +20,11 @@ func setup(world: GameWorld, clock: GameClock) -> void:
 	_init_schedule()
 
 
+func reset() -> void:
+	_active.clear()
+	_init_schedule()
+
+
 func lines_for_tile(tile: Vector2i) -> PackedStringArray:
 	if _world == null or _world.state == null:
 		return PackedStringArray()

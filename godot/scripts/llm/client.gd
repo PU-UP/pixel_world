@@ -46,6 +46,10 @@ func queue_length() -> int:
 	return _queue.size()
 
 
+func cancel_pending() -> void:
+	_queue.clear()
+
+
 func request_decision(messages: Array, meta: Dictionary = {}) -> int:
 	meta["request_type"] = "decision"
 	return _enqueue(messages, meta, true)

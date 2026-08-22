@@ -32,6 +32,13 @@ func _advance(delta: float) -> void:
 func current_tick() -> int:
 	return _tick_index
 
+
+func reset() -> void:
+	_tick_index = 0
+	_accumulator = 0.0
+	paused = false
+
+
 # ---- P1.5: 单步 ----
 func tick_once() -> void:
 	# 无论 paused 与否都推进一 tick(由调用方决定何时用)

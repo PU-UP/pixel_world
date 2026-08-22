@@ -20,6 +20,13 @@ func open(for_agent_id: String) -> void:
 	_load()
 
 
+func wipe() -> void:
+	_memories.clear()
+	_next_id = 1
+	if not _path.is_empty() and FileAccess.file_exists(_path):
+		DirAccess.remove_absolute(_path)
+
+
 func append(entry: Dictionary) -> int:
 	var mem := entry.duplicate(true)
 	mem["id"] = _next_id
@@ -102,7 +109,7 @@ func latest_reflection_summary() -> String:
 		var mem: Dictionary = _memories[i]
 		if str(mem.get("category", "")) == "reflection":
 			return str(mem.get("text", ""))
-	return "(no reflection yet)"
+	return "（尚无反思）"
 
 
 func _load() -> void:

@@ -113,7 +113,7 @@ func _set_control_mode(mode: int) -> void:
 
 
 func _control_mode_label() -> String:
-	return "AGENT" if _control_mode == ControlMode.AGENT else "MANUAL"
+	return "自主" if _control_mode == ControlMode.AGENT else "手动"
 
 
 func _selected_record() -> Dictionary:
@@ -144,13 +144,13 @@ func _refresh_minimap() -> void:
 
 
 func _update_hud() -> void:
-	var pause_str: String = "PAUSED" if _clock.paused else "RUNNING"
-	var llm_str := "LLM:ok" if _llm.is_configured() else "LLM:no-key"
+	var pause_str: String = "暂停" if _clock.paused else "运行"
+	var llm_str := "LLM:未配置"
 	if _llm.is_configured():
 		llm_str = "LLM:%d/%d" % [_llm.inflight_count(), _llm.inflight_count() + _llm.queue_length()]
 	var tok: int = int(_logger.stats().get("tokens_total", 0))
 	var roster: String = "%d/%d" % [_coordinator.selected_index + 1, _coordinator.spawn_count()]
-	_hud_status.text = "FPS:%d tick:%d %s %s %s tok:%d #%s" % [
+	_hud_status.text = "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
@@ -161,49 +161,49 @@ func _update_hud() -> void:
 	]
 	var selected: PlayerScript = _current_agent()
 	if selected == null:
-		_hud_agent.text = "agent: (none)"
-		_hud_observation.text = "(none)"
-		_hud_action_log.text = "(none)"
-		_hud_decision.text = "(none)"
+		_hud_agent.text = "角色：（无）"
+		_hud_observation.text = "（无）"
+		_hud_action_log.text = "（无）"
+		_hud_decision.text = "（无）"
 		return
 	var rec := _selected_record()
 	var name_prefix := str(rec["persona"].display_name) if not rec.is_empty() else str(selected.agent_id)
-	_hud_agent.text = _truncate("%s | %s" % [name_prefix, selected.get_status_line()], 48)
-	_hud_observation.text = "obs: %s" % _truncate(selected.get_observation(), 64)
-	var lines := selected.get_action_log_lines(3)
-	_hud_action_log.text = "\n".join(lines) if lines.size() > 0 else "(none)"
+	_hud_agent.text = _truncate("%s | %s" % [name_prefix, selected.get_status_line()], 72)
+	_hud_observation.text = "观察：%s" % _truncate(selected.get_observation(), 96)
+	var lines := selected.get_action_log_lines(4)
+	_hud_action_log.text = "\n".join(lines) if lines.size() > 0 else "（无）"
 	var decision := _selected_decision()
-	var decision_text := decision.get_last_decision_text() if decision != null else "(none)"
-	_hud_decision.text = _truncate(decision_text, 100)
+	var decision_text := decision.get_last_decision_text() if decision != null else "（无）"
+	_hud_decision.text = "决策：%s" % _truncate(decision_text, 120)
 
 
 func _update_memory_hud() -> void:
 	var rec := _selected_record()
 	if rec.is_empty():
-		_hud_memory_title.text = "MEMORY  (F4 close)"
-		_hud_reflection.text = "(none)"
-		_hud_memory.text = "(empty)"
+		_hud_memory_title.text = "记忆（F4 关闭）"
+		_hud_reflection.text = "（无）"
+		_hud_memory.text = "（空）"
 		return
 	var player: PlayerScript = rec["player"]
 	var persona = rec["persona"]
 	var agent_label := "%s" % str(player.agent_id)
-	_hud_memory_title.text = "MEMORY — %s (%s)  Tab切换  F4关闭" % [persona.display_name, agent_label]
+	_hud_memory_title.text = "记忆 — %s（%s）  Tab切换  F4关闭" % [persona.display_name, agent_label]
 	var limit: int = int(Config.memory_cfg().get("hud", {}).get("display_limit", 50))
-	_hud_reflection.text = _truncate(rec["reflection"].get_last_reflection_text(), 400)
+	_hud_reflection.text = _truncate(rec["reflection"].get_last_reflection_text(), 500)
 	_hud_memory.text = rec["memory"].format_for_hud(limit, "[%s]" % agent_label)
 
 
 func _update_relation_hud() -> void:
 	var rec := _selected_record()
 	if rec.is_empty():
-		_hud_relation_title.text = "RELATIONS  (F5 close)"
-		_hud_plan.text = "(none)"
-		_hud_relations.text = "(empty)"
+		_hud_relation_title.text = "关系（F5 关闭）"
+		_hud_plan.text = "（无）"
+		_hud_relations.text = "（空）"
 		return
 	var player: PlayerScript = rec["player"]
 	var persona = rec["persona"]
 	var agent_label := str(player.agent_id)
-	_hud_relation_title.text = "REL — %s (%s)  F5" % [persona.display_name, agent_label]
+	_hud_relation_title.text = "关系 — %s（%s）  F5关闭" % [persona.display_name, agent_label]
 	var plan_steps: PackedStringArray = rec["planning"].get_remaining_steps()
 	if plan_steps.is_empty():
 		_hud_plan.text = _truncate(rec["planning"].get_last_plan_text(), 200)
@@ -274,6 +274,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("quit"):
 		_logger.write_session_summary({"exit": "user_quit"})
 		get_tree().quit()
+	elif event.is_action_pressed("reset_world"):
+		_reset_world()
 	elif event.is_action_pressed("toggle_pause"):
 		_clock.paused = not _clock.paused
 	elif event.is_action_pressed("step_tick"):
@@ -306,3 +308,19 @@ func _try_step_input(agent: PlayerScript, delta: Vector2i) -> void:
 	if agent.is_busy():
 		return
 	agent.enqueue_move_to_tile(agent.get_tile_position() + delta)
+
+
+func _reset_world() -> void:
+	_llm.cancel_pending()
+	_logger.rotate_session("world_reset")
+	var keep_agent_mode := _control_mode == ControlMode.AGENT
+	_coordinator.reset_world(keep_agent_mode)
+	_connect_decision_signals()
+	_set_control_mode(ControlMode.AGENT if keep_agent_mode else ControlMode.MANUAL)
+	if _debug_visible:
+		_update_hud()
+	if _memory_visible:
+		_update_memory_hud()
+	if _relation_visible:
+		_update_relation_hud()
+	_refresh_minimap()

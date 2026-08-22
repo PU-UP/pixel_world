@@ -61,7 +61,7 @@ func should_greet(other_id: String) -> bool:
 
 func format_for_hud(all_agent_ids: Array) -> String:
 	if _edges.is_empty():
-		return "  (no relationships yet)"
+		return "  （尚无关系）"
 	var lines: PackedStringArray = []
 	for oid in all_agent_ids:
 		var other := str(oid)
@@ -71,25 +71,25 @@ func format_for_hud(all_agent_ids: Array) -> String:
 		if float(e["familiarity"]) < 0.01 and float(e["affinity"]) < 0.01:
 			continue
 		lines.append(
-			"  → %-10s  fam=%.2f  aff=%.2f  trust=%.2f" % [
+			"  → %-10s  熟络=%.2f  好感=%.2f  信任=%.2f" % [
 				other,
 				float(e["familiarity"]),
 				float(e["affinity"]),
 				float(e["trust"]),
 			]
 		)
-	return "\n".join(lines) if lines.size() > 0 else "  (no relationships yet)"
+	return "\n".join(lines) if lines.size() > 0 else "  （尚无关系）"
 
 
 func format_for_decision(nearby_ids: PackedStringArray) -> PackedStringArray:
 	var lines: PackedStringArray = []
 	for oid in nearby_ids:
 		var e: Dictionary = get_edge(str(oid))
-		var tag := "stranger"
+		var tag := "陌生"
 		if float(e["familiarity"]) >= greet_threshold():
-			tag = "familiar"
+			tag = "熟悉"
 		lines.append(
-			"%s: fam=%.2f aff=%.2f trust=%.2f (%s)" % [
+			"%s: 熟络=%.2f 好感=%.2f 信任=%.2f（%s）" % [
 				oid, float(e["familiarity"]), float(e["affinity"]), float(e["trust"]), tag
 			]
 		)
@@ -103,7 +103,7 @@ func format_network_ascii(all_agent_ids: Array) -> String:
 		if s != agent_id:
 			ids.append(s)
 	if ids.is_empty():
-		return "(alone)"
+		return "（独处）"
 	var parts: PackedStringArray = []
 	for other in ids:
 		var e: Dictionary = get_edge(other)

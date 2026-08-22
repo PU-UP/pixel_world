@@ -15,6 +15,7 @@ const PlanningScript = preload("res://scripts/agent/planning.gd")
 const RelationshipsScript = preload("res://scripts/agent/relationships.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
 const AgentScene = preload("res://scenes/entities/Agent.tscn")
+const SessionResetScript = preload("res://scripts/session_reset.gd")
 
 var records: Array = []
 var comm: CommRouterScript = null
@@ -87,6 +88,45 @@ func cycle_selection() -> void:
 func set_agent_mode(enabled: bool) -> void:
 	for rec in records:
 		rec["decision"].set_enabled(enabled)
+
+
+func reset_world(agent_mode: bool = false) -> void:
+	_destroy_runtime()
+	SessionResetScript.wipe_persisted_agent_data()
+	_clock.reset()
+	_world.state.reset()
+	_world.events.reset()
+	_co_presence_counter = 0
+	comm = CommRouterScript.new()
+	comm.name = "CommRouter"
+	_runtime_parent.add_child(comm)
+	comm.message_delivered.connect(_on_message_delivered)
+	comm.item_given.connect(_on_item_given)
+	_spawn_agents()
+	set_agent_mode(agent_mode)
+	roster_changed.emit()
+
+
+func _destroy_runtime() -> void:
+	for rec in records:
+		if is_instance_valid(rec.get("decision")):
+			rec["decision"].set_enabled(false)
+		for key in ["persona", "memory", "relationships", "planning", "decision", "reflection"]:
+			var node: Node = rec.get(key)
+			if node != null and is_instance_valid(node) and node.get_parent() != null:
+				node.get_parent().remove_child(node)
+				node.free()
+	records.clear()
+	selected_index = 0
+	if comm != null and is_instance_valid(comm):
+		if comm.get_parent() != null:
+			comm.get_parent().remove_child(comm)
+		comm.free()
+		comm = null
+	if _agents_root != null:
+		for child in _agents_root.get_children():
+			_agents_root.remove_child(child)
+			child.free()
 
 
 func _spawn_agents() -> void:

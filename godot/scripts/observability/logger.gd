@@ -26,12 +26,29 @@ var _stats: Dictionary = {
 
 
 func _ready() -> void:
+	_begin_session()
+
+
+func _begin_session() -> void:
+	_summary_written = false
 	_session_id = Time.get_datetime_string_from_system().replace(":", "-")
 	_started_at = Time.get_datetime_string_from_system()
 	var log_dir := Config.repo_root().path_join("data/logs")
 	DirAccess.make_dir_recursive_absolute(log_dir)
 	_log_path = log_dir.path_join("%s.jsonl" % _session_id)
 	_summary_path = log_dir.path_join("%s_summary.json" % _session_id)
+	_stats = {
+		"llm_calls": 0,
+		"llm_errors": 0,
+		"decisions": 0,
+		"decision_errors": 0,
+		"tokens_prompt": 0,
+		"tokens_completion": 0,
+		"tokens_total": 0,
+		"by_request_type": {},
+		"by_agent": {},
+		"by_action_kind": {},
+	}
 	log_event("session_start", {"session_id": _session_id})
 
 
@@ -110,6 +127,12 @@ func log_decision(entry: Dictionary) -> void:
 	row["event"] = "decision"
 	row["ts"] = Time.get_datetime_string_from_system()
 	_write_line(row)
+
+
+func rotate_session(reason: String = "rotate") -> void:
+	if not _summary_written:
+		write_session_summary({"exit": reason})
+	_begin_session()
 
 
 func write_session_summary(extra: Dictionary = {}) -> void:

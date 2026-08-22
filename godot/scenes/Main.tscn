@@ -61,20 +61,22 @@ script = ExtResource("11_coordinator")
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="Root" type="MarginContainer" parent="HUD"]
-anchors_preset = 0
-offset_right = 480.0
-offset_bottom = 320.0
-theme_override_constants/margin_left = 6
-theme_override_constants/margin_top = 6
-theme_override_constants/margin_right = 6
-theme_override_constants/margin_bottom = 6
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
 [node name="HBox" type="HBoxContainer" parent="HUD/Root"]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 10
 
 [node name="ObservePanel" type="PanelContainer" parent="HUD/Root/HBox"]
-custom_minimum_size = Vector2(198, 0)
+custom_minimum_size = Vector2(340, 0)
 layout_mode = 2
 size_flags_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
@@ -88,19 +90,19 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.92, 0.94, 0.98, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "FPS: 0  tick: 0"
+theme_override_font_sizes/font_size = 18
+text = "帧率:0  tick:0"
 
 [node name="AgentLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.92, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "agent=player"
+theme_override_font_sizes/font_size = 18
+text = "角色："
 
 [node name="ObsScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
-custom_minimum_size = Vector2(0, 34)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
@@ -110,12 +112,12 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.84, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "obs: (none)"
+theme_override_font_sizes/font_size = 17
+text = "观察：（无）"
 autowrap_mode = 3
 
 [node name="ActionScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
@@ -125,12 +127,12 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.94, 0.72, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "actions: (none)"
+theme_override_font_sizes/font_size = 17
+text = "行动：（无）"
 autowrap_mode = 3
 
 [node name="DecisionScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
@@ -140,8 +142,8 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.82, 0.94, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "decision: (none)"
+theme_override_font_sizes/font_size = 17
+text = "决策：（无）"
 autowrap_mode = 3
 
 [node name="MemoryPanel" type="PanelContainer" parent="HUD/Root/HBox"]
@@ -162,17 +164,17 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_header")
 [node name="MemoryTitle" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.88, 1, 1)
-theme_override_font_sizes/font_size = 12
-text = "MEMORY  (F4 close)"
+theme_override_font_sizes/font_size = 18
+text = "记忆（F4 关闭）"
 
 [node name="ReflectionHeader" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.95, 1)
-theme_override_font_sizes/font_size = 12
-text = "Reflection"
+theme_override_font_sizes/font_size = 17
+text = "反思"
 
 [node name="ReflectionScroll" type="ScrollContainer" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
-custom_minimum_size = Vector2(0, 76)
+custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 0
 horizontal_scroll_mode = 0
@@ -183,15 +185,15 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.86, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 12
-text = "(none)"
+theme_override_font_sizes/font_size = 17
+text = "（无）"
 autowrap_mode = 3
 
 [node name="MemListHeader" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.9, 0.78, 1)
-theme_override_font_sizes/font_size = 12
-text = "Recent memories"
+theme_override_font_sizes/font_size = 17
+text = "近期记忆"
 
 [node name="MemoryScroll" type="ScrollContainer" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
 layout_mode = 2
@@ -204,8 +206,8 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.92, 0.82, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
-text = "(empty)"
+theme_override_font_sizes/font_size = 16
+text = "（空）"
 
 [node name="RelationPanel" type="PanelContainer" parent="HUD/Root/HBox"]
 visible = false
@@ -225,14 +227,14 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_header")
 [node name="RelationTitle" type="Label" parent="HUD/Root/HBox/RelationPanel/RelationVBox/RelationHeader"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.82, 0.72, 1)
-theme_override_font_sizes/font_size = 12
-text = "RELATIONS  (F5 close)"
+theme_override_font_sizes/font_size = 18
+text = "关系（F5 关闭）"
 
 [node name="PlanHeader" type="Label" parent="HUD/Root/HBox/RelationPanel/RelationVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.78, 0.95, 1)
-theme_override_font_sizes/font_size = 12
-text = "Current plan"
+theme_override_font_sizes/font_size = 17
+text = "当前计划"
 
 [node name="PlanScroll" type="ScrollContainer" parent="HUD/Root/HBox/RelationPanel/RelationVBox"]
 custom_minimum_size = Vector2(0, 56)
@@ -246,15 +248,15 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.86, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
-text = "(none)"
+theme_override_font_sizes/font_size = 16
+text = "（无）"
 autowrap_mode = 3
 
 [node name="RelListHeader" type="Label" parent="HUD/Root/HBox/RelationPanel/RelationVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.75, 0.82, 1)
-theme_override_font_sizes/font_size = 12
-text = "Relationships"
+theme_override_font_sizes/font_size = 17
+text = "关系网络"
 
 [node name="RelationScroll" type="ScrollContainer" parent="HUD/Root/HBox/RelationPanel/RelationVBox"]
 layout_mode = 2
@@ -267,8 +269,8 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.82, 0.88, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
-text = "(empty)"
+theme_override_font_sizes/font_size = 16
+text = "（空）"
 autowrap_mode = 3
 
 [node name="MinimapPanel" type="Control" parent="HUD"]
@@ -276,9 +278,9 @@ visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -102.0
-offset_top = 6.0
-offset_right = -6.0
-offset_bottom = 102.0
+offset_left = -150.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 150.0
 grow_horizontal = 0
 script = ExtResource("12_minimap")

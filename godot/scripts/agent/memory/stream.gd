@@ -71,6 +71,12 @@ func reset_event_count() -> void:
 	_event_count = 0
 
 
+func wipe() -> void:
+	_event_count = 0
+	_last_decay_tick = 0
+	_store.wipe()
+
+
 func maybe_decay(current_tick: int) -> void:
 	var cfg := Config.memory_cfg()
 	var interval: int = int(cfg.get("decay_interval_ticks", 50))
@@ -83,7 +89,7 @@ func maybe_decay(current_tick: int) -> void:
 func format_for_hud(limit: int, agent_label: String = "") -> String:
 	var recent := get_recent(limit)
 	if recent.is_empty():
-		return "  (empty)"
+		return "  （空）"
 	var prefix := "%s " % agent_label if not agent_label.is_empty() else ""
 	var lines: PackedStringArray = []
 	for mem in recent:

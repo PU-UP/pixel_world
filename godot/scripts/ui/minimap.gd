@@ -7,7 +7,7 @@ class_name MinimapPanel
 const GameWorld = preload("res://scripts/world/world.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 
-@export var panel_size: Vector2 = Vector2(96, 96)
+@export var panel_size: Vector2 = Vector2(140, 140)
 
 var _world: GameWorld = null
 var _agents: Array = []

@@ -36,6 +36,18 @@ var _observation_text: String = "(no observation yet)"
 var _heard_messages: Array = []
 var inventory: Array = []
 var action_log: Array = []
+
+const _ACTION_KIND_ZH: Dictionary = {
+	"move": "移动",
+	"say": "说话",
+	"pickup": "拾取",
+	"drop": "丢弃",
+	"observe": "观察",
+	"use": "使用",
+	"give": "给予",
+	"received": "收到",
+	"heard": "听到",
+}
 var _selected: bool = false
 
 # ---- P2 状态机 ----
@@ -530,24 +542,30 @@ func get_action_log_lines(limit: int = 4) -> PackedStringArray:
 	var lines: PackedStringArray = []
 	for i in range(action_log.size() - n, action_log.size()):
 		var e: Dictionary = action_log[i]
-		lines.append("  t%-4d  %-7s  %s" % [int(e.tick), str(e.kind), str(e.text)])
+		var kind: String = str(e.kind)
+		var kind_zh: String = str(_ACTION_KIND_ZH.get(kind, kind))
+		lines.append("  t%-4d  %-4s  %s" % [int(e.tick), kind_zh, str(e.text)])
 	return lines
 
 func get_status_line() -> String:
 	var tile_x: int = int(floor(global_position.x / TILE_SIZE))
 	var tile_y: int = int(floor(global_position.y / TILE_SIZE))
 	var t: int = _world.tile_at(global_position) if _world != null else -1
-	var state_str: String = "WALKING" if _state == State.WALKING else "IDLE"
 	var queue_n: int = _action_queue.size()
-	return "agent=%s  state=%s  q=%d  inv=%s  pos=(%.1f, %.1f)  tile=(%d, %d)  terrain=%s" % [
-		str(agent_id), state_str, queue_n, _inventory_summary(),
-		global_position.x, global_position.y, tile_x, tile_y, _tile_name(t)
+	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s" % [
+		str(agent_id),
+		"行走" if _state == State.WALKING else "空闲",
+		queue_n,
+		_inventory_summary(),
+		tile_x,
+		tile_y,
+		_tile_name(t),
 	]
 
 
 func _inventory_summary() -> String:
 	if inventory.is_empty():
-		return "empty"
+		return "空"
 	return ",".join(inventory)
 
 
