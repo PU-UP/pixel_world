@@ -20,9 +20,8 @@ const KIND_GIVE      := "GIVE"
 const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
-# P2 阶段已实现: MOVE_TO
-# P2 阶段占位: 其余 (P3 接 LLM 时一并实现)
-const IMPLEMENTED_KINDS: Array[String] = [KIND_MOVE_TO]
+# P2: MOVE_TO | P5: SAY
+const IMPLEMENTED_KINDS: Array[String] = [KIND_MOVE_TO, KIND_SAY]
 
 # ------------------------------------------------------------------
 # Schema 定义: 每个原语需要哪些字段, 以及类型

@@ -1,7 +1,7 @@
 extends Node2D
 ##
 ## Pixel World — 入口
-## P4: 记忆流 + 反思 + 记忆可视化面板
+## P5: 多 agent + SAY 通信
 ##
 
 const WorldScript = preload("res://scripts/world/world.gd")
@@ -9,15 +9,14 @@ const PlayerScript = preload("res://scripts/player.gd")
 const ClockScript = preload("res://scripts/world/clock.gd")
 const LlmClientScript = preload("res://scripts/llm/client.gd")
 const LoggerScript = preload("res://scripts/observability/logger.gd")
+const CoordinatorScript = preload("res://scripts/agent/coordinator.gd")
 const DecisionScript = preload("res://scripts/agent/decision.gd")
-const ReflectionScript = preload("res://scripts/agent/reflection.gd")
-const PersonaScript = preload("res://scripts/agent/persona.gd")
-const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
 @onready var _world: WorldScript = $World
-@onready var _player: PlayerScript = $Player
+@onready var _agents_root: Node2D = $Agents
+@onready var _coordinator: CoordinatorScript = $AgentCoordinator
 @onready var _camera: Camera2D = $Camera2D
 @onready var _clock: ClockScript = $GameClock
 @onready var _hud: CanvasLayer = $HUD
@@ -28,56 +27,53 @@ enum ControlMode { MANUAL, AGENT }
 @onready var _hud_action_log: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/ActionScroll/ActionLogLabel
 @onready var _hud_decision: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/DecisionScroll/DecisionLabel
 @onready var _memory_panel: PanelContainer = $HUD/Root/HBox/MemoryPanel
+@onready var _hud_memory_title: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader/MemoryTitle
 @onready var _hud_reflection: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/ReflectionScroll/ReflectionLabel
 @onready var _hud_memory: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryScroll/MemoryLabel
 @onready var _llm: LlmClientScript = $LlmClient
 @onready var _logger: LoggerScript = $ObservabilityLogger
-@onready var _decision: DecisionScript = $AgentDecision
-@onready var _reflection: ReflectionScript = $AgentReflection
-@onready var _persona: PersonaScript = $Persona
-@onready var _memory: MemoryStreamScript = $MemoryStream
 
 var _debug_visible: bool = true
 var _memory_visible: bool = false
-var _selected_index: int = 0
-var _agents: Array[PlayerScript] = []
 var _control_mode: int = ControlMode.MANUAL
 
 
 func _ready() -> void:
-	_player.bind_world(_world)
-	_player.bind_clock(_clock)
 	_camera.make_current()
 	_camera.position_smoothing_enabled = true
 	_hud.visible = _debug_visible
 	_memory_panel.visible = _memory_visible
-	_agents = [_player]
-	_apply_persona_config()
-	_memory.open(str(_player.agent_id))
-	_decision.setup(_player, _clock, _llm, _logger, _persona, _memory)
-	_reflection.setup(_memory, _clock, _llm, _persona)
+	_coordinator.setup(_world, _clock, _llm, _logger, _agents_root, self)
+	_coordinator.roster_changed.connect(_on_roster_changed)
+	_connect_decision_signals()
 	_set_control_mode(_control_mode_from_config())
-	_decision.decision_made.connect(_on_decision_made)
-	_reflection.reflection_done.connect(_on_reflection_done)
 
 
-func _process(_delta: float) -> void:
-	_camera.global_position = _player.global_position
+func _connect_decision_signals() -> void:
+	for rec in _coordinator.records:
+		var decision: DecisionScript = rec["decision"]
+		if not decision.decision_made.is_connected(_on_decision_made):
+			decision.decision_made.connect(_on_decision_made)
+		if not rec["reflection"].reflection_done.is_connected(_on_reflection_done):
+			rec["reflection"].reflection_done.connect(_on_reflection_done)
+
+
+func _on_roster_changed() -> void:
+	_connect_decision_signals()
 	if _debug_visible:
 		_update_hud()
 	if _memory_visible:
 		_update_memory_hud()
 
 
-func _apply_persona_config() -> void:
-	var cfg: Dictionary = Config.agent_config()
-	if cfg.is_empty():
-		return
-	_persona.agent_id = StringName(str(cfg.get("id", "player")))
-	_persona.display_name = str(cfg.get("display_name", "Player"))
-	if cfg.has("persona") and typeof(cfg["persona"]) == TYPE_DICTIONARY:
-		_persona.base_traits = cfg["persona"]
-	_persona.starting_biography = str(cfg.get("biography", ""))
+func _process(_delta: float) -> void:
+	var agent := _current_agent()
+	if agent != null:
+		_camera.global_position = agent.global_position
+	if _debug_visible:
+		_update_hud()
+	if _memory_visible:
+		_update_memory_hud()
 
 
 func _control_mode_from_config() -> int:
@@ -86,22 +82,44 @@ func _control_mode_from_config() -> int:
 
 func _set_control_mode(mode: int) -> void:
 	_control_mode = mode
-	_decision.set_enabled(mode == ControlMode.AGENT)
+	_coordinator.set_agent_mode(mode == ControlMode.AGENT)
 
 
 func _control_mode_label() -> String:
 	return "AGENT" if _control_mode == ControlMode.AGENT else "MANUAL"
 
 
+func _selected_record() -> Dictionary:
+	return _coordinator.selected_record()
+
+
+func _current_agent() -> PlayerScript:
+	var rec := _selected_record()
+	if rec.is_empty():
+		return null
+	return rec["player"]
+
+
+func _selected_decision() -> DecisionScript:
+	var rec := _selected_record()
+	if rec.is_empty():
+		return null
+	return rec["decision"]
+
+
 func _update_hud() -> void:
 	var pause_str: String = "PAUSED" if _clock.paused else "RUNNING"
 	var llm_str := "LLM:ok" if _llm.is_configured() else "LLM:no-key"
-	_hud_status.text = "FPS:%d tick:%d %s %s %s" % [
+	if _llm.is_configured():
+		llm_str = "LLM:%d/%d" % [_llm.inflight_count(), _llm.inflight_count() + _llm.queue_length()]
+	var roster: String = "%d/%d" % [_coordinator.selected_index + 1, _coordinator.spawn_count()]
+	_hud_status.text = "FPS:%d tick:%d %s %s %s #%s" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
 		_control_mode_label(),
 		llm_str,
+		roster,
 	]
 	var selected: PlayerScript = _current_agent()
 	if selected == null:
@@ -110,29 +128,37 @@ func _update_hud() -> void:
 		_hud_action_log.text = "(none)"
 		_hud_decision.text = "(none)"
 		return
-	_hud_agent.text = _truncate(selected.get_status_line(), 36)
+	var rec := _selected_record()
+	var name_prefix := str(rec["persona"].display_name) if not rec.is_empty() else str(selected.agent_id)
+	_hud_agent.text = _truncate("%s | %s" % [name_prefix, selected.get_status_line()], 48)
 	_hud_observation.text = "obs: %s" % _truncate(selected.get_observation(), 64)
 	var lines := selected.get_action_log_lines(3)
 	_hud_action_log.text = "\n".join(lines) if lines.size() > 0 else "(none)"
-	_hud_decision.text = _truncate(_decision.get_last_decision_text(), 100)
+	var decision := _selected_decision()
+	var decision_text := decision.get_last_decision_text() if decision != null else "(none)"
+	_hud_decision.text = _truncate(decision_text, 100)
 
 
 func _update_memory_hud() -> void:
+	var rec := _selected_record()
+	if rec.is_empty():
+		_hud_memory_title.text = "MEMORY  (F4 close)"
+		_hud_reflection.text = "(none)"
+		_hud_memory.text = "(empty)"
+		return
+	var player: PlayerScript = rec["player"]
+	var persona = rec["persona"]
+	var agent_label := "%s" % str(player.agent_id)
+	_hud_memory_title.text = "MEMORY — %s (%s)  Tab切换  F4关闭" % [persona.display_name, agent_label]
 	var limit: int = int(Config.memory_cfg().get("hud", {}).get("display_limit", 50))
-	_hud_reflection.text = _truncate(_reflection.get_last_reflection_text(), 400)
-	_hud_memory.text = _memory.format_for_hud(limit)
+	_hud_reflection.text = _truncate(rec["reflection"].get_last_reflection_text(), 400)
+	_hud_memory.text = rec["memory"].format_for_hud(limit, "[%s]" % agent_label)
 
 
 func _truncate(text: String, max_len: int) -> String:
 	if text.length() <= max_len:
 		return text
 	return text.substr(0, max_len - 1) + "…"
-
-
-func _current_agent() -> PlayerScript:
-	if _agents.is_empty():
-		return null
-	return _agents[_selected_index % _agents.size()]
 
 
 func _on_decision_made(_tick: int, _raw: String, _action: Dictionary, _result: Dictionary) -> void:
@@ -167,24 +193,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("step_tick"):
 		_clock.tick_once()
 	elif event.is_action_pressed("toggle_agent"):
-		if _agents.size() > 0:
-			_selected_index = (_selected_index + 1) % _agents.size()
+		_coordinator.cycle_selection()
+		if _memory_visible:
+			_update_memory_hud()
 	elif event.is_action_pressed("toggle_control_mode"):
 		_set_control_mode(ControlMode.MANUAL if _control_mode == ControlMode.AGENT else ControlMode.AGENT)
 	elif _control_mode == ControlMode.MANUAL:
+		var agent := _current_agent()
+		if agent == null:
+			return
 		if event.is_action_pressed("click_move"):
-			_player.enqueue_move_to_world(get_global_mouse_position())
+			agent.enqueue_move_to_world(get_global_mouse_position())
 		elif event.is_action_pressed("move_up"):
-			_try_step_input(Vector2i(0, -1))
+			_try_step_input(agent, Vector2i(0, -1))
 		elif event.is_action_pressed("move_down"):
-			_try_step_input(Vector2i(0, 1))
+			_try_step_input(agent, Vector2i(0, 1))
 		elif event.is_action_pressed("move_left"):
-			_try_step_input(Vector2i(-1, 0))
+			_try_step_input(agent, Vector2i(-1, 0))
 		elif event.is_action_pressed("move_right"):
-			_try_step_input(Vector2i(1, 0))
+			_try_step_input(agent, Vector2i(1, 0))
 
 
-func _try_step_input(delta: Vector2i) -> void:
-	if _player.is_busy():
+func _try_step_input(agent: PlayerScript, delta: Vector2i) -> void:
+	if agent.is_busy():
 		return
-	_player.enqueue_move_to_tile(_player.get_tile_position() + delta)
+	agent.enqueue_move_to_tile(agent.get_tile_position() + delta)

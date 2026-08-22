@@ -12,16 +12,23 @@ static func build_messages(
 	status: String,
 	action_log: PackedStringArray,
 	memory_lines: PackedStringArray = [],
+	nearby_agent_ids: PackedStringArray = [],
+	heard_lines: PackedStringArray = [],
 ) -> Array:
-	var system := """You are an autonomous agent in a 2D pixel island world.
+	var system := """You are an autonomous agent in a 2D pixel island world with other agents.
 Each game tick you must choose exactly ONE action using the provided tool.
-Only use implemented actions. In the current build only MOVE_TO is available.
+Available actions: MOVE_TO (walk to tile x,y), SAY (talk to another agent id or 'broadcast').
+SAY only reaches agents within audio range. Use nearby agent ids from the prompt.
 Coordinates are tile positions (integers). You cannot walk on water, trees, or mountains.
 Respond ONLY via tool/function call — no free-form answer."""
 	var user_parts: PackedStringArray = []
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
 	user_parts.append("=== Status ===\n%s" % status)
-	user_parts.append("=== Observation (nearby terrain) ===\n%s" % observation)
+	user_parts.append("=== Observation (terrain + nearby agents) ===\n%s" % observation)
+	if nearby_agent_ids.size() > 0:
+		user_parts.append("=== Nearby agent ids (for SAY.to) ===\n%s" % ", ".join(nearby_agent_ids))
+	if heard_lines.size() > 0:
+		user_parts.append("=== Recently heard speech ===\n%s" % "\n".join(heard_lines))
 	if memory_lines.size() > 0:
 		user_parts.append("=== Relevant memories ===\n%s" % "\n".join(memory_lines))
 	if action_log.size() > 0:
@@ -43,6 +50,8 @@ static func tool_definitions() -> Array:
 		for f in schema["required"]:
 			var t: int = schema["types"][f]
 			props[f] = {"type": "integer" if t == TYPE_INT else "string"}
+		if kind == AgentActions.KIND_SAY:
+			props["tone"] = {"type": "string", "description": "optional tone, e.g. friendly, curious"}
 		tools.append({
 			"type": "function",
 			"function": {

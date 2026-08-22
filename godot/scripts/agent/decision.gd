@@ -14,6 +14,7 @@ const LlmClientScript = preload("res://scripts/llm/client.gd")
 const LoggerScript = preload("res://scripts/observability/logger.gd")
 const PersonaScript = preload("res://scripts/agent/persona.gd")
 const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
+const CommRouterScript = preload("res://scripts/agent/comm.gd")
 
 var _player: Player = null
 var _clock: GameClock = null
@@ -21,6 +22,7 @@ var _llm: LlmClientScript = null
 var _logger: LoggerScript = null
 var _persona: PersonaScript = null
 var _memory: MemoryStreamScript = null
+var _comm: CommRouterScript = null
 
 var _busy: bool = false
 var _last_raw: String = ""
@@ -36,6 +38,7 @@ func setup(
 	logger: LoggerScript,
 	persona: PersonaScript,
 	memory: MemoryStreamScript,
+	comm: CommRouterScript = null,
 ) -> void:
 	_player = player
 	_clock = clock
@@ -43,6 +46,7 @@ func setup(
 	_logger = logger
 	_persona = persona
 	_memory = memory
+	_comm = comm
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -85,12 +89,16 @@ func _request_decision() -> void:
 	_memory.append_event("observation", guard["text"], tick)
 	var retrieved := _memory.retrieve_for_query(guard["text"], tick)
 	var memory_lines := _format_memories(retrieved)
+	var nearby_ids := _nearby_agent_ids()
+	var heard_lines := _player.get_recent_heard_lines(4)
 	var messages: Array = DecisionPrompt.build_messages(
 		_persona.describe(),
 		guard["text"],
 		_player.get_status_line(),
 		_player.get_action_log_lines(4),
 		memory_lines,
+		nearby_ids,
+		heard_lines,
 	)
 	_busy = true
 	_last_error = ""
@@ -107,6 +115,8 @@ func _request_decision() -> void:
 func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> void:
 	if str(meta.get("request_type", "")) != "decision":
 		return
+	if str(meta.get("agent_id", "")) != str(_player.agent_id):
+		return
 	_busy = false
 	var parsed: Dictionary = LlmParser.parse_response(body)
 	_last_raw = parsed.get("raw_text", "")
@@ -115,7 +125,7 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	if parsed["ok"]:
 		_last_action = parsed["action"]
 		_last_error = ""
-		result = ActionExecutor.execute(_player, _last_action)
+		result = ActionExecutor.execute(_player, _last_action, _comm, _clock)
 		_memory.append_event(
 			"decision",
 			"chose %s" % _format_action(_last_action),
@@ -144,6 +154,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 func _on_llm_failed(_request_id: int, error: String, meta: Dictionary) -> void:
 	if str(meta.get("request_type", "")) != "decision":
 		return
+	if str(meta.get("agent_id", "")) != str(_player.agent_id):
+		return
 	_busy = false
 	_last_error = error
 	_last_action = {}
@@ -171,6 +183,15 @@ func _format_action(action: Dictionary) -> String:
 	if action.is_empty():
 		return "(none)"
 	return "[%s] %s" % [action.get("kind", "?"), str(action.get("params", {}))]
+
+
+func _nearby_agent_ids() -> PackedStringArray:
+	var ids: PackedStringArray = []
+	if _comm == null or _player == null:
+		return ids
+	for p in _comm.players_in_perception(_player):
+		ids.append(str(p.agent_id))
+	return ids
 
 
 func _format_memories(memories: Array) -> PackedStringArray:

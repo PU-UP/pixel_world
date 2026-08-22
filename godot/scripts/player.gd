@@ -28,11 +28,14 @@ const TILE_SIZE: int = GameWorld.TILE_SIZE
 # ---- 状态 ----
 var _world = null       # GameWorld
 var _clock = null       # GameClock
+var _comm = null        # CommRouter
 var _last_dir: Vector2 = Vector2.DOWN
 var _last_position: Vector2 = Vector2.ZERO
 var _last_observation_tick: int = -1
 var _observation_text: String = "(no observation yet)"
+var _heard_messages: Array = []
 var action_log: Array = []
+var _selected: bool = false
 
 # ---- P2 状态机 ----
 enum State { IDLE, WALKING }
@@ -91,7 +94,22 @@ func _apply_runtime_config() -> void:
 
 func _ready() -> void:
 	_apply_runtime_config()
-	apply_agent_config(Config.agent_config())
+	_rebuild_sprite()
+	_last_position = global_position
+
+
+func set_body_color(c: Color) -> void:
+	body_color = c
+	if is_inside_tree():
+		_rebuild_sprite()
+
+
+func set_selected(on: bool) -> void:
+	_selected = on
+	queue_redraw()
+
+
+func _rebuild_sprite() -> void:
 	var img := Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
 	img.fill(body_color)
 	for px in 4:
@@ -107,8 +125,8 @@ func _ready() -> void:
 		img.set_pixel(0, i, Color.BLACK)
 		img.set_pixel(TILE_SIZE - 1, i, Color.BLACK)
 	var tex := ImageTexture.create_from_image(img)
-	$Sprite2D.texture = tex
-	_last_position = global_position
+	if has_node("Sprite2D"):
+		$Sprite2D.texture = tex
 
 func bind_world(world) -> void:
 	_world = world
@@ -117,6 +135,10 @@ func bind_world(world) -> void:
 
 func bind_clock(clock) -> void:
 	_clock = clock
+
+
+func bind_comm(comm) -> void:
+	_comm = comm
 
 # ------------------------------------------------------------------
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
@@ -177,6 +199,8 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()  # debug 画路径
 
 func _draw() -> void:
+	if _selected:
+		draw_arc(Vector2.ZERO, TILE_SIZE * 0.55, 0.0, TAU, 24, Color(1.0, 0.95, 0.3, 0.85), 2.0)
 	if not debug_show_path:
 		return
 	if _current_path.is_empty():
@@ -203,6 +227,8 @@ func _pump_next_action() -> void:
 	match _current_action["kind"]:
 		AgentActions.KIND_MOVE_TO:
 			_start_move_to(_current_action["params"]["x"], _current_action["params"]["y"])
+		AgentActions.KIND_SAY:
+			_execute_say(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -228,6 +254,39 @@ func _start_move_to(gx: int, gy: int) -> void:
 	_path_idx = 0
 	_state = State.WALKING
 	_log_action(_clock.current_tick() if _clock else -1, "move", "→ (%d, %d)  path_len=%d" % [gx, gy, path.size()])
+
+func _execute_say(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var tick: int = _clock.current_tick() if _clock else -1
+	var to_s: String = str(p.get("to", ""))
+	var text_s: String = str(p.get("text", ""))
+	var tone_s: String = str(p.get("tone", "neutral"))
+	if _comm == null:
+		_log_action(tick, "say", "FAILED no comm router")
+	else:
+		var res: Dictionary = _comm.deliver_say(self, to_s, text_s, tone_s, tick)
+		if res.get("ok", false):
+			_log_action(tick, "say", "→ %s: %s" % [to_s, text_s])
+		else:
+			_log_action(tick, "say", "FAILED %s" % str(res.get("error", "?")))
+	_pump_next_action()
+
+
+func receive_say(from_id: String, text: String, _tone: String, tick: int) -> void:
+	_heard_messages.append({"from": from_id, "text": text, "tick": tick})
+	if _heard_messages.size() > 6:
+		_heard_messages.pop_front()
+	_log_action(tick, "heard", "%s: %s" % [from_id, text])
+
+
+func get_recent_heard_lines(limit: int = 4) -> PackedStringArray:
+	var lines: PackedStringArray = []
+	var n: int = mini(limit, _heard_messages.size())
+	for i in range(_heard_messages.size() - n, _heard_messages.size()):
+		var m: Dictionary = _heard_messages[i]
+		lines.append("t%d %s: %s" % [int(m.get("tick", -1)), str(m.get("from", "?")), str(m.get("text", ""))])
+	return lines
+
 
 func _advance_along_path(delta: float) -> void:
 	if _current_path.is_empty() or _path_idx >= _current_path.size():
@@ -269,7 +328,19 @@ func _refresh_observation_if_needed() -> void:
 	var parts: PackedStringArray = []
 	for k in counts.keys():
 		parts.append("%s×%d" % [k, counts[k]])
-	_observation_text = ", ".join(parts) if parts.size() > 0 else "(empty)"
+	var terrain_text := ", ".join(parts) if parts.size() > 0 else "(empty)"
+	var agent_parts: PackedStringArray = []
+	if _comm != null:
+		for p in _comm.players_in_perception(self):
+			var pt: Vector2i = p.get_tile_position()
+			agent_parts.append("%s@(%d,%d)" % [str(p.agent_id), pt.x, pt.y])
+	if agent_parts.size() > 0:
+		_observation_text = "%s | agents: %s" % [terrain_text, ", ".join(agent_parts)]
+	else:
+		_observation_text = terrain_text
+	var heard := get_recent_heard_lines(2)
+	if heard.size() > 0:
+		_observation_text += " | heard: " + "; ".join(heard)
 
 func _tile_name(t: int) -> String:
 	match t:

@@ -6,7 +6,7 @@ class_name ActionExecutor
 const AgentActions = preload("res://scripts/agent/actions.gd")
 
 
-static func execute(player: Player, action: Dictionary) -> Dictionary:
+static func execute(player: Player, action: Dictionary, _comm = null, _clock = null) -> Dictionary:
 	var validation: Dictionary = AgentActions.validate(action)
 	if not validation["ok"]:
 		return {"ok": false, "error": validation["error"]}

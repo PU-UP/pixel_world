@@ -1,9 +1,50 @@
 agents:
-  - id: player
+  - id: explorer
     display_name: Explorer
-    spawn_tile: [32, 32]
+    spawn_tile: [28, 32]
+    color: [0.78, 0.23, 0.23]
+    persona:
+      curiosity: 0.85
+      sociability: 0.5
+      bravery: 0.7
+    biography: "A curious explorer mapping the unknown island."
+
+  - id: scout
+    display_name: Scout
+    spawn_tile: [36, 28]
+    color: [0.25, 0.55, 0.82]
+    persona:
+      curiosity: 0.6
+      sociability: 0.4
+      bravery: 0.8
+    biography: "A cautious scout who prefers high ground and clear paths."
+
+  - id: sage
+    display_name: Sage
+    spawn_tile: [32, 36]
+    color: [0.55, 0.35, 0.75]
+    persona:
+      curiosity: 0.5
+      sociability: 0.75
+      bravery: 0.4
+    biography: "A thoughtful sage who enjoys conversation and reflection."
+
+  - id: wanderer
+    display_name: Wanderer
+    spawn_tile: [24, 36]
+    color: [0.35, 0.72, 0.45]
     persona:
       curiosity: 0.7
-      sociability: 0.5
-      bravery: 0.6
-    biography: "A curious explorer who just arrived on a mysterious island."
+      sociability: 0.6
+      bravery: 0.5
+    biography: "A free-spirited wanderer who roams the beaches and forests."
+
+  - id: guardian
+    display_name: Guardian
+    spawn_tile: [40, 34]
+    color: [0.82, 0.62, 0.22]
+    persona:
+      curiosity: 0.4
+      sociability: 0.55
+      bravery: 0.9
+    biography: "A protective guardian who watches over others on the island."

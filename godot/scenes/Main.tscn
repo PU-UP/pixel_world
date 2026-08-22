@@ -1,18 +1,11 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="2_world"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="3_player"]
 [ext_resource type="Script" path="res://scripts/world/clock.gd" id="4_clock"]
-[ext_resource type="Script" path="res://scripts/agent/persona.gd" id="5_persona"]
 [ext_resource type="Script" path="res://scripts/llm/client.gd" id="6_llm"]
 [ext_resource type="Script" path="res://scripts/observability/logger.gd" id="7_logger"]
-[ext_resource type="Script" path="res://scripts/agent/decision.gd" id="8_decision"]
-[ext_resource type="Script" path="res://scripts/agent/memory/stream.gd" id="9_memory"]
-[ext_resource type="Script" path="res://scripts/agent/reflection.gd" id="10_reflection"]
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
-size = Vector2(14, 14)
+[ext_resource type="Script" path="res://scripts/agent/coordinator.gd" id="11_coordinator"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.04, 0.06, 0.1, 0.88)
@@ -45,15 +38,7 @@ script = ExtResource("1_main")
 [node name="World" type="Node2D" parent="."]
 script = ExtResource("2_world")
 
-[node name="Player" type="CharacterBody2D" parent="."]
-position = Vector2(512, 512)
-script = ExtResource("3_player")
-
-[node name="Sprite2D" type="Sprite2D" parent="Player"]
-centered = true
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
-shape = SubResource("RectangleShape2D_player")
+[node name="Agents" type="Node2D" parent="."]
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(512, 512)
@@ -63,23 +48,14 @@ position_smoothing_speed = 8.0
 [node name="GameClock" type="Node" parent="."]
 script = ExtResource("4_clock")
 
-[node name="Persona" type="Node" parent="."]
-script = ExtResource("5_persona")
-
 [node name="LlmClient" type="Node" parent="."]
 script = ExtResource("6_llm")
 
 [node name="ObservabilityLogger" type="Node" parent="."]
 script = ExtResource("7_logger")
 
-[node name="MemoryStream" type="Node" parent="."]
-script = ExtResource("9_memory")
-
-[node name="AgentDecision" type="Node" parent="."]
-script = ExtResource("8_decision")
-
-[node name="AgentReflection" type="Node" parent="."]
-script = ExtResource("10_reflection")
+[node name="AgentCoordinator" type="Node" parent="."]
+script = ExtResource("11_coordinator")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 

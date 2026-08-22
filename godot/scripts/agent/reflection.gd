@@ -15,6 +15,7 @@ var _memory: MemoryStreamScript = null
 var _clock: GameClock = null
 var _llm: LlmClientScript = null
 var _persona: PersonaScript = null
+var _agent_id: String = ""
 
 var _busy: bool = false
 var _last_reflection: String = ""
@@ -22,11 +23,18 @@ var _ticks_since_reflection: int = 0
 var enabled: bool = true
 
 
-func setup(memory: MemoryStreamScript, clock: GameClock, llm: LlmClientScript, persona: PersonaScript) -> void:
+func setup(
+	memory: MemoryStreamScript,
+	clock: GameClock,
+	llm: LlmClientScript,
+	persona: PersonaScript,
+	agent_id: String = "",
+) -> void:
 	_memory = memory
 	_clock = clock
 	_llm = llm
 	_persona = persona
+	_agent_id = agent_id if not agent_id.is_empty() else str(persona.agent_id)
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -82,6 +90,8 @@ func _request_reflection() -> void:
 func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> void:
 	if str(meta.get("request_type", "")) != "reflection":
 		return
+	if str(meta.get("agent_id", "")) != _agent_id:
+		return
 	_busy = false
 	var text := _extract_text(body)
 	if text.is_empty():
@@ -95,6 +105,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 
 func _on_llm_failed(_request_id: int, _error: String, meta: Dictionary) -> void:
 	if str(meta.get("request_type", "")) != "reflection":
+		return
+	if str(meta.get("agent_id", "")) != _agent_id:
 		return
 	_busy = false
 

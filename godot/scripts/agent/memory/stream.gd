@@ -80,14 +80,16 @@ func maybe_decay(current_tick: int) -> void:
 	_store.apply_decay(current_tick, cfg)
 
 
-func format_for_hud(limit: int) -> String:
+func format_for_hud(limit: int, agent_label: String = "") -> String:
 	var recent := get_recent(limit)
 	if recent.is_empty():
 		return "  (empty)"
+	var prefix := "%s " % agent_label if not agent_label.is_empty() else ""
 	var lines: PackedStringArray = []
 	for mem in recent:
 		lines.append(
-			"  t%-4d  %-10s  imp=%.2f  %s" % [
+			"  %st%-4d  %-10s  imp=%.2f  %s" % [
+				prefix,
 				int(mem.get("tick", -1)),
 				str(mem.get("category", "?")),
 				float(mem.get("importance", 0.0)),

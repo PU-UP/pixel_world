@@ -6,10 +6,11 @@ llm:
 
 agent:
   perception_radius: 6
+  audio_radius: 10
   observation_refresh_ticks: 2
   move_speed_px: 80.0
   action_log_max: 8
-  starting_agents: 1
+  starting_agents: 5
 
 control:
   mode: manual   # manual | agent

@@ -58,10 +58,22 @@ func decision_skip_while_walking() -> bool:
 
 
 func agent_config() -> Dictionary:
-	var list: Array = agents.get("agents", [])
+	var list: Array = all_agents()
 	if list.is_empty():
 		return {}
 	return list[0]
+
+
+func all_agents() -> Array:
+	return agents.get("agents", [])
+
+
+func starting_agent_count() -> int:
+	return int(runtime.get("agent", {}).get("starting_agents", 1))
+
+
+func audio_radius() -> int:
+	return int(runtime.get("agent", {}).get("audio_radius", 10))
 
 
 func memory_cfg() -> Dictionary:
