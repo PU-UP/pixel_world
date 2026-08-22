@@ -1,9 +1,10 @@
 extends Node2D
 ##
 ## Pixel World — 入口
-## P1: 程序生成荒岛 → 玩家能走 → 相机跟随
+## P1:   程序生成荒岛 → 玩家能走 → 相机跟随
 ## P1.5: 上帝视角观测面板 + F1 暂停 / F2 单步 / Tab 切换 agent
-## P2 即将: A* + MOVE_TO 原语
+## P2:   鼠标点哪走哪 — 点击 → MOVE_TO → A* → 沿路径走
+## P3:   LLM 决策闭环
 ##
 
 const WorldScript = preload("res://scripts/world/world.gd")
@@ -22,20 +23,15 @@ const ClockScript = preload("res://scripts/world/clock.gd")
 
 # ---- P1.5 状态 ----
 var _debug_visible: bool = true
-var _selected_index: int = 0   # 暂时锁 0,Tab 切换在 P5 多 agent 时启用
-var _agents: Array[PlayerScript] = []   # 所有可被选中的 agent (P1 阶段只有 player)
+var _selected_index: int = 0
+var _agents: Array[PlayerScript] = []
 
 func _ready() -> void:
-	# 玩家初始位置: 岛中心, 草地
-	_player.global_position = Vector2(32 * 16, 32 * 16)
 	_player.bind_world(_world)
 	_player.bind_clock(_clock)
-	# 相机居中于玩家
 	_camera.make_current()
 	_camera.position_smoothing_enabled = true
-	# 调试 HUD
 	_hud.visible = _debug_visible
-	# 注册 agent(暂时只有 player;P5 多 agent 改成加载 agents.yaml)
 	_agents = [_player]
 
 func _process(_delta: float) -> void:
@@ -43,8 +39,8 @@ func _process(_delta: float) -> void:
 		_update_hud()
 
 func _update_hud() -> void:
-	var pause_str := "PAUSED" if _clock.paused else "RUNNING"
-	_hud_status.text = "FPS: %d  tick: %d  %s  (F1 暂停 / F2 单步 / ` 隐藏 HUD / Tab 切 agent)" % [
+	var pause_str: String = "PAUSED" if _clock.paused else "RUNNING"
+	_hud_status.text = "FPS: %d  tick: %d  %s  (F1 暂停 / F2 单步 / ` 隐藏 HUD / Tab 切 agent / 鼠标点走)" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
@@ -75,9 +71,35 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_pause"):
 		_clock.paused = not _clock.paused
 	elif event.is_action_pressed("step_tick"):
-		# 单步:推一 tick(玩家可继续移动,但 World tick 推进一格)
 		_clock.tick_once()
 	elif event.is_action_pressed("toggle_agent"):
-		# Tab 切换(暂时只在 1 个 agent 内部循环,P5 多 agent 时扩成多选)
 		if _agents.size() > 0:
 			_selected_index = (_selected_index + 1) % _agents.size()
+	elif event.is_action_pressed("click_move"):
+		# P2: 鼠标点击 = 地图上的瓦片 → MOVE_TO
+		var mp: Vector2 = event.position
+		if _player._state == PlayerScript.State.WALKING:
+			# 已经在走, 把新目标追加到队列 (玩家可中途改主意)
+			_player.enqueue_move_to_world(mp)
+		else:
+			_player.enqueue_move_to_world(mp)
+	elif event.is_action_pressed("move_up"):
+		_try_step_input(Vector2i(0, -1))
+	elif event.is_action_pressed("move_down"):
+		_try_step_input(Vector2i(0, 1))
+	elif event.is_action_pressed("move_left"):
+		_try_step_input(Vector2i(-1, 0))
+	elif event.is_action_pressed("move_right"):
+		_try_step_input(Vector2i(1, 0))
+
+## WASD = 移动 1 瓦片 — 走完才接收下一 key
+func _try_step_input(delta: Vector2i) -> void:
+	# 玩家在 WALKING 时不响应新方向 (避免和路径冲突)
+	# 玩家可以连按多次: 走完当前步接下一步
+	if _player._state == PlayerScript.State.WALKING:
+		return
+	var cur := Vector2i(int(floor(_player.global_position.x / PlayerScript.TILE_SIZE)),
+						int(floor(_player.global_position.y / PlayerScript.TILE_SIZE)))
+	var next_tile: Vector2i = cur + delta
+	# 在外面或不可走: 静默忽略 (log reject)
+	_player.enqueue_move_to_tile(next_tile)

@@ -42,6 +42,18 @@ func is_walkable(world_pos: Vector2) -> bool:
 	var t := tile_at(world_pos)
 	return t == Tile.GRASS or t == Tile.SAND
 
+# P2: 瓦片坐标版, 给 A* 寻路用, 避免重复 floor/除法
+func is_walkable_tile(tile: Vector2i) -> bool:
+	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
+		return false
+	var t: int = tiles[tile.y][tile.x]
+	return t == Tile.GRASS or t == Tile.SAND
+
+func tile_at_tile(tile: Vector2i) -> int:
+	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
+		return Tile.WATER
+	return tiles[tile.y][tile.x]
+
 # ------------------------------------------------------------------
 # 程序化生成:粗略的"椭圆岛屿 + 中心山 + 海岸沙滩 + 边上海水"
 # ------------------------------------------------------------------

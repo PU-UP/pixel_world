@@ -180,10 +180,132 @@ func _init() -> void:
 		c.get_parent().remove_child(c)
 		c.free()
 
+	# ---- 7) P2 — actions schema 校验 ----
+	var A: Script = load("res://scripts/agent/actions.gd")
+	if A != null:
+		# 合法 MOVE_TO
+		var v1: Dictionary = A.validate({"kind": "MOVE_TO", "params": {"x": 5, "y": 5}})
+		if v1["ok"]:
+			passed += 1
+			print("[OK]   actions.validate: legal MOVE_TO accepted")
+		else:
+			failed += 1
+			printerr("[FAIL] actions.validate legal: ", v1)
+		# 缺 x
+		var v2: Dictionary = A.validate({"kind": "MOVE_TO", "params": {"y": 5}})
+		if not v2["ok"]:
+			passed += 1
+			print("[OK]   actions.validate: missing x rejected (", v2["error"], ")")
+		else:
+			failed += 1
+			printerr("[FAIL] actions.validate should reject missing x")
+		# 未知 kind
+		var v3: Dictionary = A.validate({"kind": "FLY", "params": {}})
+		if not v3["ok"]:
+			passed += 1
+			print("[OK]   actions.validate: unknown kind rejected")
+		else:
+			failed += 1
+			printerr("[FAIL] actions.validate should reject unknown kind")
+		# 类型错 (x 应该是 int, 传 string)
+		var v4: Dictionary = A.validate({"kind": "MOVE_TO", "params": {"x": "5", "y": 5}})
+		if not v4["ok"]:
+			passed += 1
+			print("[OK]   actions.validate: type mismatch rejected")
+		else:
+			failed += 1
+			printerr("[FAIL] actions.validate should reject x:string")
+		# make_move_to 工厂
+		var f1: Dictionary = A.make_move_to(3, 7)
+		if f1["kind"] == "MOVE_TO" and f1["params"]["x"] == 3 and f1["params"]["y"] == 7:
+			passed += 1
+			print("[OK]   actions.make_move_to(3, 7) factory")
+		else:
+			failed += 1
+			printerr("[FAIL] make_move_to: ", f1)
+		# tick_cost: MOVE_TO path_len=5
+		var tc1: int = A.tick_cost(A.make_move_to(0, 0), 5)
+		if tc1 == 5:
+			passed += 1
+			print("[OK]   actions.tick_cost MOVE_TO path=5 -> 5 ticks")
+		else:
+			failed += 1
+			printerr("[FAIL] tick_cost MOVE_TO: ", tc1)
+		# tick_cost: WAIT 3 ticks
+		var tc2: int = A.tick_cost({"kind": "WAIT", "params": {"ticks": 3}})
+		if tc2 == 3:
+			passed += 1
+			print("[OK]   actions.tick_cost WAIT(3) -> 3 ticks")
+		else:
+			failed += 1
+			printerr("[FAIL] tick_cost WAIT: ", tc2)
+		# IMPLEMENTED_KINDS 应只含 MOVE_TO (P2 阶段)
+		if A.IMPLEMENTED_KINDS.size() == 1 and A.IMPLEMENTED_KINDS[0] == "MOVE_TO":
+			passed += 1
+			print("[OK]   actions.IMPLEMENTED_KINDS = [MOVE_TO] in P2")
+		else:
+			failed += 1
+			printerr("[FAIL] IMPLEMENTED_KINDS: ", A.IMPLEMENTED_KINDS)
+
+	# ---- 8) P2 — Player 队列接口 ----
+	var P2: Script = load("res://scripts/player.gd")
+	if P2 != null:
+		var p2: Node = P2.new()
+		# 初始 IDLE
+		if p2._state == 0 and p2._action_queue.is_empty():   # 0 = IDLE
+			passed += 1
+			print("[OK]   player initial state IDLE, queue empty")
+		else:
+			failed += 1
+			printerr("[FAIL] player init state/queue")
+		# 注入合法 MOVE_TO
+		p2._world = null  # 还没 bind, 但 validate 不依赖 world
+		p2.enqueue_action({"kind": "MOVE_TO", "params": {"x": 10, "y": 10}})
+		if p2._action_queue.size() == 1:
+			passed += 1
+			print("[OK]   player.enqueue_action legal appends 1")
+		else:
+			failed += 1
+			printerr("[FAIL] enqueue_action legal: queue=", p2._action_queue.size())
+		# 注入未实现的 SAY -> 拒绝 + 写 log
+		var log_before: int = p2.action_log.size()
+		p2.enqueue_action({"kind": "SAY", "params": {"to": "x", "text": "y"}})
+		if p2._action_queue.size() == 1 and p2.action_log.size() > log_before:
+			passed += 1
+			print("[OK]   player.enqueue_action unimplemented SAY rejected, logged")
+		else:
+			failed += 1
+			printerr("[FAIL] enqueue_action unimplemented: queue=", p2._action_queue.size(), " log=", p2.action_log.size())
+		# 注入非法 action (缺 x) -> 拒绝
+		var q_before: int = p2._action_queue.size()
+		p2.enqueue_action({"kind": "MOVE_TO", "params": {"y": 10}})
+		if p2._action_queue.size() == q_before:
+			passed += 1
+			print("[OK]   player.enqueue_action invalid (missing x) rejected")
+		else:
+			failed += 1
+			printerr("[FAIL] enqueue_action invalid: queue=", p2._action_queue.size())
+		# 接口存在
+		if p2.has_method("enqueue_move_to_world") and p2.has_method("enqueue_move_to_tile") and p2.has_method("clear_action_queue"):
+			passed += 1
+			print("[OK]   player has enqueue_move_to_world / _tile / clear_action_queue")
+		else:
+			failed += 1
+			printerr("[FAIL] player missing P2 methods")
+		# 状态行应包含 'state='
+		var status: String = p2.get_status_line()
+		if status.find("state=") >= 0 and status.find("q=") >= 0:
+			passed += 1
+			print("[OK]   player.get_status_line includes state & queue")
+		else:
+			failed += 1
+			printerr("[FAIL] get_status_line: ", status)
+		p2.free()
+
 	# ---- 总结 ----
 	print("")
 	print("================================")
-	print("P1 + P1.5 smoke test: %d passed, %d failed" % [passed, failed])
+	print("P1 + P1.5 + P2 smoke test: %d passed, %d failed" % [passed, failed])
 	print("================================")
 	if failed > 0:
 		quit(1)
