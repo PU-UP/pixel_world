@@ -22,8 +22,10 @@ static func build_messages(
 Each game tick you must choose exactly ONE action using the provided tool.
 Available actions: MOVE_TO (walk to tile x,y), SAY (talk to agent_id or broadcast),
 PICK_UP (item id on ground within range), DROP (item id from your inventory),
+USE (item from inventory; on = self, agent_id, or nearby item id),
+GIVE (item from inventory to nearby agent_id within audio range),
 OBSERVE (target = agent_id or item id for extra details).
-SAY only reaches agents within audio range. Use nearby agent ids from the prompt.
+SAY and GIVE only reach agents within audio range. Use nearby agent ids from the prompt.
 PICK_UP requires being within 1 tile of the item. Check items list for ids.
 If a nearby agent is marked familiar (high familiarity), prefer greeting them with SAY when appropriate.
 Follow your current plan when possible, but adapt to new observations.

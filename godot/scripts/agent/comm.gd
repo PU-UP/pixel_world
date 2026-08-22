@@ -5,6 +5,7 @@ class_name CommRouter
 ##
 
 signal message_delivered(speaker_id: String, target_id: String, text: String, tick: int, recipient_ids: Array)
+signal item_given(giver_id: String, receiver_id: String, item_id: String, tick: int)
 
 var _players: Array = []
 
@@ -54,6 +55,24 @@ func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: 
 		recipient_ids.append(str(p.agent_id))
 	message_delivered.emit(str(speaker.agent_id), target, text, tick, recipient_ids)
 	return {"ok": true, "error": "", "recipients": recipients.size()}
+
+
+func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int) -> Dictionary:
+	var target := to_agent_id.strip_edges()
+	var item := item_id.strip_edges()
+	if target.is_empty() or item.is_empty():
+		return {"ok": false, "error": "empty target or item"}
+	if not giver.inventory.has(item):
+		return {"ok": false, "error": "not carrying item: %s" % item}
+	var receiver: Player = _find_player(target)
+	if receiver == null:
+		return {"ok": false, "error": "unknown agent: %s" % target}
+	if not _can_hear(giver, receiver):
+		return {"ok": false, "error": "target out of audio range"}
+	giver.inventory.erase(item)
+	receiver.receive_item(str(giver.agent_id), item, tick)
+	item_given.emit(str(giver.agent_id), target, item, tick)
+	return {"ok": true, "error": ""}
 
 
 func _find_player(agent_id: String) -> Player:

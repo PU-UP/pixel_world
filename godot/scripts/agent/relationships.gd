@@ -41,6 +41,16 @@ func on_co_presence(other_id: String) -> void:
 	_bump(other_id, cfg)
 
 
+func on_gave_to(other_id: String) -> void:
+	var cfg: Dictionary = Config.relationships_cfg().get("on_give", {})
+	_bump(other_id, cfg)
+
+
+func on_received_from(other_id: String) -> void:
+	var cfg: Dictionary = Config.relationships_cfg().get("on_received", {})
+	_bump(other_id, cfg)
+
+
 func greet_threshold() -> float:
 	return float(Config.relationships_cfg().get("greet_familiarity", 0.35))
 

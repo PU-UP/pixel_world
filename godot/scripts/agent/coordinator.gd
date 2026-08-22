@@ -39,6 +39,7 @@ func setup(world, clock, llm, logger, agents_root: Node2D, runtime_parent: Node)
 	comm.name = "CommRouter"
 	_runtime_parent.add_child(comm)
 	comm.message_delivered.connect(_on_message_delivered)
+	comm.item_given.connect(_on_item_given)
 	if not _clock.tick.is_connected(_on_clock_tick):
 		_clock.tick.connect(_on_clock_tick)
 	_spawn_agents()
@@ -164,6 +165,15 @@ func _on_message_delivered(
 		var listener_rec := _find_record(str(rid))
 		if not listener_rec.is_empty():
 			listener_rec["relationships"].on_heard_from(speaker_id)
+
+
+func _on_item_given(giver_id: String, receiver_id: String, _item_id: String, _tick: int) -> void:
+	var giver_rec := _find_record(giver_id)
+	if not giver_rec.is_empty():
+		giver_rec["relationships"].on_gave_to(receiver_id)
+	var receiver_rec := _find_record(receiver_id)
+	if not receiver_rec.is_empty():
+		receiver_rec["relationships"].on_received_from(giver_id)
 
 
 func _find_record(agent_id: String) -> Dictionary:

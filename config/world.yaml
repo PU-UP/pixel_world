@@ -10,22 +10,28 @@ items:
     display_name: "Driftwood"
     description: "A sturdy piece of driftwood from the beach."
     color: [0.55, 0.40, 0.28]
+    use_text: "Hefted the driftwood; light but solid."
   seashell:
     display_name: "Seashell"
     description: "A pale shell washed ashore."
     color: [0.92, 0.88, 0.82]
+    use_text: "Turned the seashell over in your hands."
   berry_bush:
     display_name: "Wild Berries"
     description: "Edible berries growing wild."
     color: [0.72, 0.18, 0.35]
+    consumable: true
+    use_text: "Ate wild berries; feeling a bit refreshed."
   flint:
     display_name: "Flint Stone"
     description: "A sharp stone useful for tools."
     color: [0.50, 0.52, 0.55]
+    use_text: "Struck the flint; a few sparks fly."
   rope:
     display_name: "Coiled Rope"
     description: "Old rope left near the ruins."
     color: [0.62, 0.48, 0.32]
+    use_text: "Checked the rope coil; still usable."
 
 ground_items:
   - item: driftwood

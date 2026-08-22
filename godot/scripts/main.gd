@@ -57,6 +57,8 @@ func _ready() -> void:
 	_coordinator.setup(_world, _clock, _llm, _logger, _agents_root, self)
 	_llm.set_logger(_logger)
 	_world.events.setup(_world, _clock)
+	if not _world.events.event_fired.is_connected(_on_world_event):
+		_world.events.event_fired.connect(_on_world_event)
 	_coordinator.roster_changed.connect(_on_roster_changed)
 	_connect_decision_signals()
 	_set_control_mode(_control_mode_from_config())
@@ -71,6 +73,10 @@ func _connect_decision_signals() -> void:
 			rec["reflection"].reflection_done.connect(_on_reflection_done)
 		if not rec["planning"].plan_updated.is_connected(_on_plan_updated):
 			rec["planning"].plan_updated.connect(_on_plan_updated)
+
+
+func _on_world_event(event_id: String, text: String, tick: int) -> void:
+	_logger.log_event("world_event", {"event_id": event_id, "text": text, "tick": tick})
 
 
 func _on_roster_changed() -> void:

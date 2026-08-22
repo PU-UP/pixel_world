@@ -236,6 +236,10 @@ func _pump_next_action() -> void:
 			_execute_drop(_current_action)
 		AgentActions.KIND_OBSERVE:
 			_execute_observe(_current_action)
+		AgentActions.KIND_USE:
+			_execute_use(_current_action)
+		AgentActions.KIND_GIVE:
+			_execute_give(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -343,11 +347,73 @@ func _execute_observe(action: Dictionary) -> void:
 	_pump_next_action()
 
 
+func _execute_use(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var item_id: String = str(p.get("item", "")).strip_edges()
+	var on_target: String = str(p.get("on", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	if item_id.is_empty():
+		_log_action(tick, "use", "FAILED empty item")
+	elif not inventory.has(item_id):
+		_log_action(tick, "use", "FAILED not carrying %s" % item_id)
+	elif not _use_target_valid(on_target):
+		_log_action(tick, "use", "FAILED target out of range: %s" % on_target)
+	else:
+		var defs: Dictionary = Config.world_item_defs()
+		var def: Dictionary = defs.get(item_id, {})
+		var text: String = str(def.get("use_text", "used %s" % item_id))
+		if on_target not in ["self", str(agent_id)]:
+			text = "%s (on %s)" % [text, on_target]
+		if bool(def.get("consumable", false)):
+			inventory.erase(item_id)
+		_log_action(tick, "use", text)
+	_pump_next_action()
+
+
+func _execute_give(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var item_id: String = str(p.get("item", "")).strip_edges()
+	var to_id: String = str(p.get("to", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	if _comm == null:
+		_log_action(tick, "give", "FAILED no comm router")
+	elif item_id.is_empty() or to_id.is_empty():
+		_log_action(tick, "give", "FAILED empty item or target")
+	else:
+		var res: Dictionary = _comm.deliver_give(self, to_id, item_id, tick)
+		if res.get("ok", false):
+			_log_action(tick, "give", "→ %s: %s" % [to_id, item_id])
+		else:
+			_log_action(tick, "give", "FAILED %s" % str(res.get("error", "?")))
+	_pump_next_action()
+
+
+func _use_target_valid(on_target: String) -> bool:
+	if on_target.is_empty() or on_target in ["self", str(agent_id)]:
+		return true
+	if _comm != null:
+		for other in _comm.players_in_perception(self):
+			if str(other.agent_id) == on_target:
+				return true
+	if _world != null and _world.state != null:
+		var found: Dictionary = _world.state.find_ground_item_near(
+			get_tile_position(), on_target, observation_radius_tiles
+		)
+		if not found.is_empty():
+			return true
+	return false
+
+
 func receive_say(from_id: String, text: String, _tone: String, tick: int) -> void:
 	_heard_messages.append({"from": from_id, "text": text, "tick": tick})
 	if _heard_messages.size() > 6:
 		_heard_messages.pop_front()
 	_log_action(tick, "heard", "%s: %s" % [from_id, text])
+
+
+func receive_item(from_id: String, item_id: String, tick: int) -> void:
+	inventory.append(item_id)
+	_log_action(tick, "received", "%s gave %s" % [from_id, item_id])
 
 
 func get_recent_heard_lines(limit: int = 4) -> PackedStringArray:

@@ -21,7 +21,9 @@ const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
 # P2: MOVE_TO | P5: SAY | P7: PICK_UP, DROP, OBSERVE
-const IMPLEMENTED_KINDS: Array[String] = [KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE]
+const IMPLEMENTED_KINDS: Array[String] = [
+	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE,
+]
 
 # ------------------------------------------------------------------
 # Schema 定义: 每个原语需要哪些字段, 以及类型

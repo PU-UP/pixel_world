@@ -41,6 +41,13 @@ func _draw() -> void:
 			var t: int = _world.tile_at_tile(Vector2i(x, y))
 			var c: Color = GameWorld.TILE_COLORS.get(t, Color.GRAY)
 			draw_rect(Rect2(x * sx, y * sy, maxf(sx, 1.0), maxf(sy, 1.0)), c)
+	if _world.state != null:
+		for item in _world.state.all_ground_items():
+			var it: Vector2i = item.get("tile", Vector2i.ZERO)
+			var ipx: float = it.x * sx + sx * 0.5
+			var ipy: float = it.y * sy + sy * 0.5
+			var item_id: String = str(item.get("item_id", ""))
+			draw_rect(Rect2(ipx - 1.0, ipy - 1.0, 2.0, 2.0), _item_color(item_id))
 	for agent in _agents:
 		if agent == null or not is_instance_valid(agent):
 			continue
@@ -50,3 +57,11 @@ func _draw() -> void:
 		var py: float = tile.y * sy + sy * 0.5
 		draw_circle(Vector2(px, py), 2.0, Color(1.0, 0.95, 0.2, 0.95))
 	draw_rect(Rect2(Vector2.ZERO, panel_size), Color(0.7, 0.75, 0.85, 0.8), false, 1.0)
+
+
+func _item_color(item_id: String) -> Color:
+	var def: Dictionary = Config.world_item_defs().get(item_id, {})
+	var rgb: Array = def.get("color", [0.85, 0.75, 0.2])
+	if rgb.size() < 3:
+		return Color(0.85, 0.75, 0.2)
+	return Color(float(rgb[0]), float(rgb[1]), float(rgb[2]), 0.95)

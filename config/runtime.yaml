@@ -51,6 +51,14 @@ relationships:
     trust: 0.01
   on_co_presence:
     familiarity: 0.01
+  on_give:
+    familiarity: 0.08
+    affinity: 0.06
+    trust: 0.05
+  on_received:
+    familiarity: 0.06
+    affinity: 0.05
+    trust: 0.04
 
 persona_drift:
   max_per_trait: 0.15
