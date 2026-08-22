@@ -1,0 +1,46 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/world/world.gd" id="2_world"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="3_player"]
+[ext_resource type="Script" path="res://scripts/world/clock.gd" id="4_clock"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
+size = Vector2(14, 14)
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="World" type="Node2D" parent="."]
+script = ExtResource("2_world")
+
+[node name="Player" type="CharacterBody2D" parent="."]
+position = Vector2(512, 512)
+script = ExtResource("3_player")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+centered = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("RectangleShape2D_player")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(512, 512)
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+
+[node name="GameClock" type="Node" parent="."]
+script = ExtResource("4_clock")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="HUD"]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 472.0
+offset_bottom = 56.0
+text = "Pixel World — P1"
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 12

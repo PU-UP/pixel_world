@@ -1,0 +1,6 @@
+# 暂时占位
+# P1 阶段: 玩家/敌人 sprite 由代码程序生成(Image.create + ImageTexture)
+# P7 阶段: 在这里放置:
+#   player.png  玩家立绘 (16x16 / 32x32 像素,4 方向)
+#   npc_*.png   NPC 立绘
+#   object_*.png 物品/资源/建筑
