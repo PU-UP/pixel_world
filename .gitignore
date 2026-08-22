@@ -41,6 +41,7 @@ checkpoints/
 # ---- Godot(若后续使用) ----
 .godot/
 .import/
+.tools/
 
 # ---- Unity(若后续使用) ----
 Library/

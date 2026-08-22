@@ -34,13 +34,44 @@ script = ExtResource("4_clock")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
-[node name="Label" type="Label" parent="HUD"]
+[node name="Panel" type="Panel" parent="HUD"]
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 472.0
-offset_bottom = 56.0
-text = "Pixel World — P1"
+offset_bottom = 200.0
+modulate = Color(0, 0, 0, 0.5)
+
+[node name="VBox" type="VBoxContainer" parent="HUD"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 472.0
+offset_bottom = 196.0
+
+[node name="StatusLabel" type="Label" parent="HUD/VBox"]
+text = "FPS: 0  tick: 0"
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
-theme_override_font_sizes/font_size = 12
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="AgentLabel" type="Label" parent="HUD/VBox"]
+text = "agent=player  pos=(0, 0)"
+theme_override_colors/font_color = Color(0.85, 0.95, 0.85, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="ObservationLabel" type="Label" parent="HUD/VBox"]
+text = "observation: (none)"
+autowrap_mode = 3
+theme_override_colors/font_color = Color(0.85, 0.85, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="ActionLogLabel" type="Label" parent="HUD/VBox"]
+text = "recent actions:"
+theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
