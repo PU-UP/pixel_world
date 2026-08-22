@@ -1,0 +1,49 @@
+# ---- 运行时数据 ----
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.vec
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- 环境 ----
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+$RECYCLE.BIN/
+
+# ---- LLM / 模型 ----
+models/
+checkpoints/
+*.gguf
+*.bin
+
+# ---- Godot(若后续使用) ----
+.godot/
+.import/
+
+# ---- Unity(若后续使用) ----
+Library/
+Temp/
+Build/
+UserSettings/
