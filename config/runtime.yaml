@@ -16,3 +16,20 @@ control:
 
 decision:
   skip_while_walking: true
+
+memory:
+  importance_threshold_for_permanent: 0.7
+  decay_interval_ticks: 50
+  decay_amount: 0.02
+  reflection:
+    trigger_events: 10
+    trigger_ticks: 100
+    lookback: 50
+  retrieval:
+    top_k: 8
+    time_window_ticks: 600
+    recency_weight: 0.3
+    similarity_weight: 0.7
+    importance_weight: 0.2
+  hud:
+    display_limit: 50

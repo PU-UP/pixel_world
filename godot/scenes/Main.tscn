@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="2_world"]
@@ -8,9 +8,36 @@
 [ext_resource type="Script" path="res://scripts/llm/client.gd" id="6_llm"]
 [ext_resource type="Script" path="res://scripts/observability/logger.gd" id="7_logger"]
 [ext_resource type="Script" path="res://scripts/agent/decision.gd" id="8_decision"]
+[ext_resource type="Script" path="res://scripts/agent/memory/stream.gd" id="9_memory"]
+[ext_resource type="Script" path="res://scripts/agent/reflection.gd" id="10_reflection"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
 size = Vector2(14, 14)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.04, 0.06, 0.1, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.42, 0.55, 0.7)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_header"]
+bg_color = Color(0.12, 0.16, 0.24, 0.95)
+border_width_bottom = 1
+border_color = Color(0.35, 0.42, 0.55, 0.5)
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -45,57 +72,160 @@ script = ExtResource("6_llm")
 [node name="ObservabilityLogger" type="Node" parent="."]
 script = ExtResource("7_logger")
 
+[node name="MemoryStream" type="Node" parent="."]
+script = ExtResource("9_memory")
+
 [node name="AgentDecision" type="Node" parent="."]
 script = ExtResource("8_decision")
 
+[node name="AgentReflection" type="Node" parent="."]
+script = ExtResource("10_reflection")
+
 [node name="HUD" type="CanvasLayer" parent="."]
 
-[node name="Panel" type="Panel" parent="HUD"]
-offset_left = 8.0
-offset_top = 8.0
-offset_right = 472.0
-offset_bottom = 260.0
-modulate = Color(0, 0, 0, 0.5)
+[node name="Root" type="MarginContainer" parent="HUD"]
+anchors_preset = 0
+offset_right = 480.0
+offset_bottom = 320.0
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
 
-[node name="VBox" type="VBoxContainer" parent="HUD"]
-offset_left = 16.0
-offset_top = 12.0
-offset_right = 472.0
-offset_bottom = 256.0
+[node name="HBox" type="HBoxContainer" parent="HUD/Root"]
+layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="StatusLabel" type="Label" parent="HUD/VBox"]
+[node name="ObservePanel" type="PanelContainer" parent="HUD/Root/HBox"]
+custom_minimum_size = Vector2(198, 0)
+layout_mode = 2
+size_flags_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="ObserveVBox" type="VBoxContainer" parent="HUD/Root/HBox/ObservePanel"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="StatusLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.94, 0.98, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 12
 text = "FPS: 0  tick: 0"
-theme_override_colors/font_color = Color(1, 1, 1, 1)
+
+[node name="AgentLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.92, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 12
+text = "agent=player"
 
-[node name="AgentLabel" type="Label" parent="HUD/VBox"]
-text = "agent=player  pos=(0, 0)"
-theme_override_colors/font_color = Color(0.85, 0.95, 0.85, 1)
+[node name="ObsScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="ObservationLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox/ObsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.82, 0.84, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
-
-[node name="ObservationLabel" type="Label" parent="HUD/VBox"]
-text = "observation: (none)"
+theme_override_font_sizes/font_size = 12
+text = "obs: (none)"
 autowrap_mode = 3
-theme_override_colors/font_color = Color(0.85, 0.85, 1, 1)
+
+[node name="ActionScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="ActionLogLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox/ActionScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.94, 0.72, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 12
+text = "actions: (none)"
+autowrap_mode = 3
 
-[node name="ActionLogLabel" type="Label" parent="HUD/VBox"]
-text = "recent actions:"
-theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+[node name="DecisionScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="DecisionLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox/DecisionScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.82, 0.94, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 11
-
-[node name="DecisionLabel" type="Label" parent="HUD/VBox"]
+theme_override_font_sizes/font_size = 12
 text = "decision: (none)"
 autowrap_mode = 3
-theme_override_colors/font_color = Color(1, 0.8, 0.95, 1)
+
+[node name="MemoryPanel" type="PanelContainer" parent="HUD/Root/HBox"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="MemoryVBox" type="VBoxContainer" parent="HUD/Root/HBox/MemoryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="MemoryHeader" type="PanelContainer" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_header")
+
+[node name="MemoryTitle" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.88, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "MEMORY  (F4 close)"
+
+[node name="ReflectionHeader" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 12
+text = "Reflection"
+
+[node name="ReflectionScroll" type="ScrollContainer" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_vertical = 0
+horizontal_scroll_mode = 0
+
+[node name="ReflectionLabel" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox/ReflectionScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.88, 0.86, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 12
+text = "(none)"
+autowrap_mode = 3
+
+[node name="MemListHeader" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.9, 0.78, 1)
+theme_override_font_sizes/font_size = 12
+text = "Recent memories"
+
+[node name="MemoryScroll" type="ScrollContainer" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="MemoryLabel" type="Label" parent="HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.82, 0.92, 0.82, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 11
+text = "(empty)"

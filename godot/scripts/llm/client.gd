@@ -36,6 +36,17 @@ func is_configured() -> bool:
 
 
 func request_decision(messages: Array, meta: Dictionary = {}) -> int:
+	meta["request_type"] = "decision"
+	return _enqueue(messages, meta, true)
+
+
+func request_chat(messages: Array, meta: Dictionary = {}) -> int:
+	if not meta.has("request_type"):
+		meta["request_type"] = "chat"
+	return _enqueue(messages, meta, false)
+
+
+func _enqueue(messages: Array, meta: Dictionary, use_tools: bool) -> int:
 	var id := _next_id
 	_next_id += 1
 	_queue.append({
@@ -43,6 +54,7 @@ func request_decision(messages: Array, meta: Dictionary = {}) -> int:
 		"messages": messages,
 		"meta": meta,
 		"attempt": 0,
+		"use_tools": use_tools,
 	})
 	_pump_queue()
 	return id
@@ -66,12 +78,13 @@ func _send(item: Dictionary) -> void:
 	var body := {
 		"model": str(Config.llm.get("model", "MiniMax-M3")),
 		"messages": item["messages"],
-		"tools": DecisionPrompt.tool_definitions(),
-		"tool_choice": "required",
 		"temperature": float(Config.llm.get("temperature", 0.7)),
 		"max_completion_tokens": int(Config.llm.get("max_tokens", 400)),
 		"thinking": {"type": "disabled"},
 	}
+	if bool(item.get("use_tools", false)):
+		body["tools"] = DecisionPrompt.tool_definitions()
+		body["tool_choice"] = "required"
 	var headers := PackedStringArray([
 		"Content-Type: application/json",
 		"Authorization: Bearer %s" % api_key,

@@ -64,6 +64,18 @@ func agent_config() -> Dictionary:
 	return list[0]
 
 
+func memory_cfg() -> Dictionary:
+	return runtime.get("memory", {})
+
+
+func memory_reflection_cfg() -> Dictionary:
+	return memory_cfg().get("reflection", {})
+
+
+func memory_retrieval_cfg() -> Dictionary:
+	return memory_cfg().get("retrieval", {})
+
+
 func _load_env(path: String) -> void:
 	_env.clear()
 	if not FileAccess.file_exists(path):

@@ -6,7 +6,13 @@ class_name DecisionPrompt
 const AgentActions = preload("res://scripts/agent/actions.gd")
 
 
-static func build_messages(persona_desc: String, observation: String, status: String, action_log: PackedStringArray) -> Array:
+static func build_messages(
+	persona_desc: String,
+	observation: String,
+	status: String,
+	action_log: PackedStringArray,
+	memory_lines: PackedStringArray = [],
+) -> Array:
 	var system := """You are an autonomous agent in a 2D pixel island world.
 Each game tick you must choose exactly ONE action using the provided tool.
 Only use implemented actions. In the current build only MOVE_TO is available.
@@ -16,6 +22,8 @@ Respond ONLY via tool/function call — no free-form answer."""
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
 	user_parts.append("=== Status ===\n%s" % status)
 	user_parts.append("=== Observation (nearby terrain) ===\n%s" % observation)
+	if memory_lines.size() > 0:
+		user_parts.append("=== Relevant memories ===\n%s" % "\n".join(memory_lines))
 	if action_log.size() > 0:
 		user_parts.append("=== Recent actions ===\n%s" % "\n".join(action_log))
 	user_parts.append("=== Task ===\nChoose your next action for this tick.")

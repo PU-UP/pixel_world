@@ -1,0 +1,147 @@
+class_name MemoryStore
+##
+## 记忆持久化 — P4 使用 JSON 文件 (data/memory/{agent_id}.json)
+## 接口与 schema 对齐 AGENTS.md, 后续可换 GDSQLite 实现
+##
+
+const MemoryImportance = preload("res://scripts/agent/memory/importance.gd")
+
+var agent_id: String = ""
+var _path: String = ""
+var _next_id: int = 1
+var _memories: Array = []
+
+
+func open(for_agent_id: String) -> void:
+	agent_id = for_agent_id
+	var dir := Config.repo_root().path_join("data/memory")
+	DirAccess.make_dir_recursive_absolute(dir)
+	_path = dir.path_join("%s.json" % agent_id)
+	_load()
+
+
+func append(entry: Dictionary) -> int:
+	var mem := entry.duplicate(true)
+	mem["id"] = _next_id
+	_next_id += 1
+	if not mem.has("tick"):
+		mem["tick"] = 0
+	if not mem.has("category"):
+		mem["category"] = "ambient"
+	if not mem.has("text"):
+		mem["text"] = ""
+	if not mem.has("importance"):
+		mem["importance"] = MemoryImportance.base_for_category(str(mem["category"]))
+	_memories.append(mem)
+	_save()
+	return int(mem["id"])
+
+
+func get_recent(limit: int) -> Array:
+	var n := mini(limit, _memories.size())
+	if n <= 0:
+		return []
+	return _memories.slice(_memories.size() - n, _memories.size())
+
+
+func get_by_category(category: String, limit: int) -> Array:
+	var out: Array = []
+	for i in range(_memories.size() - 1, -1, -1):
+		var mem: Dictionary = _memories[i]
+		if str(mem.get("category", "")) == category:
+			out.append(mem)
+			if out.size() >= limit:
+				break
+	return out
+
+
+func count() -> int:
+	return _memories.size()
+
+
+func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Array:
+	var time_window: int = int(cfg.get("time_window_ticks", 600))
+	var w_sim: float = float(cfg.get("similarity_weight", 0.7))
+	var w_rec: float = float(cfg.get("recency_weight", 0.3))
+	var w_imp: float = float(cfg.get("importance_weight", 0.2))
+	var ranked: Array = []
+	for mem in _memories:
+		var mem_tick: int = int(mem.get("tick", 0))
+		if current_tick - mem_tick > time_window:
+			continue
+		var recency := 1.0
+		if time_window > 0:
+			recency = clampf(1.0 - float(current_tick - mem_tick) / float(time_window), 0.0, 1.0)
+		var sim := _text_similarity(query, str(mem.get("text", "")))
+		var imp := float(mem.get("importance", 0.1))
+		var score := w_sim * sim + w_rec * recency + w_imp * imp
+		ranked.append({"mem": mem, "score": score})
+	ranked.sort_custom(func(a, b): return a["score"] > b["score"])
+	var out: Array = []
+	for i in mini(k, ranked.size()):
+		out.append(ranked[i]["mem"])
+	return out
+
+
+func apply_decay(current_tick: int, cfg: Dictionary) -> void:
+	var threshold: float = float(cfg.get("importance_threshold_for_permanent", 0.7))
+	var amount: float = float(cfg.get("decay_amount", 0.02))
+	var changed := false
+	for mem in _memories:
+		var imp: float = float(mem.get("importance", 0.0))
+		if imp >= threshold:
+			continue
+		mem["importance"] = maxf(0.01, imp - amount)
+		changed = true
+	if changed:
+		_save()
+
+
+func latest_reflection_summary() -> String:
+	for i in range(_memories.size() - 1, -1, -1):
+		var mem: Dictionary = _memories[i]
+		if str(mem.get("category", "")) == "reflection":
+			return str(mem.get("text", ""))
+	return "(no reflection yet)"
+
+
+func _load() -> void:
+	_memories.clear()
+	_next_id = 1
+	if not FileAccess.file_exists(_path):
+		return
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(_path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	_memories = parsed.get("memories", [])
+	_next_id = int(parsed.get("next_id", _memories.size() + 1))
+
+
+func _save() -> void:
+	var file := FileAccess.open(_path, FileAccess.WRITE)
+	if file == null:
+		push_warning("[MemoryStore] cannot write %s" % _path)
+		return
+	file.store_string(JSON.stringify({"memories": _memories, "next_id": _next_id}))
+	file.close()
+
+
+func _text_similarity(a: String, b: String) -> float:
+	var wa := _words(a)
+	var wb := _words(b)
+	if wa.is_empty() or wb.is_empty():
+		return 0.0
+	var inter := 0
+	for w in wa:
+		if wb.has(w):
+			inter += 1
+	return float(inter) / float(maxi(wa.size(), wb.size()))
+
+
+func _words(text: String) -> Dictionary:
+	var out: Dictionary = {}
+	for part in text.to_lower().split(" ", false):
+		var w := part.strip_edges()
+		if w.length() >= 2:
+			out[w] = true
+	return out
