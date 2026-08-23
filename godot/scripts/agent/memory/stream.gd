@@ -93,13 +93,27 @@ func format_for_hud(limit: int, agent_label: String = "") -> String:
 	var prefix := "%s " % agent_label if not agent_label.is_empty() else ""
 	var lines: PackedStringArray = []
 	for mem in recent:
+		var cat: String = _category_zh(str(mem.get("category", "?")))
+		var body: String = str(mem.get("text", ""))
+		if body.length() > 100:
+			body = body.substr(0, 99) + "…"
 		lines.append(
-			"  %st%-4d  %-10s  imp=%.2f  %s" % [
+			"  %st%-4d  %-4s  %.2f  %s" % [
 				prefix,
 				int(mem.get("tick", -1)),
-				str(mem.get("category", "?")),
+				cat,
 				float(mem.get("importance", 0.0)),
-				str(mem.get("text", "")).substr(0, 80),
+				body,
 			]
 		)
 	return "\n".join(lines)
+
+
+static func _category_zh(category: String) -> String:
+	match category:
+		"decision": return "决策"
+		"observation": return "观察"
+		"action": return "行动"
+		"plan": return "计划"
+		"reflection": return "反思"
+		_: return category

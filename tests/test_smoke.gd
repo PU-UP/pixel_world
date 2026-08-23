@@ -7,7 +7,7 @@ extends SceneTree
 ##   1. World 程序生成地形不崩溃、维度正确
 ##   2. 玩家 16x16 sprite 能正常程序生成
 ##   3. 关键脚本无 Parse Error (否则根本起不来)
-##   4. main.gd 节点引用名一致 (Player / World / Camera2D / HUD / GameClock)
+##   4. main.gd 节点引用名一致 (World / Agents / Camera2D / HUD / GameClock)
 ##
 
 func _init() -> void:
@@ -89,7 +89,7 @@ func _init() -> void:
 		printerr("[FAIL] Main.tscn not loadable")
 	else:
 		var inst = main_scene.instantiate()
-		var expected := ["World", "Player", "Camera2D", "GameClock", "HUD"]
+		var expected := ["World", "Agents", "Camera2D", "GameClock", "HUD", "LlmClient", "AgentCoordinator"]
 		var missing := []
 		for n in expected:
 			if not inst.has_node(n):
@@ -101,18 +101,25 @@ func _init() -> void:
 			failed += 1
 			printerr("[FAIL] Main.tscn missing nodes: ", missing)
 
-		# ---- 4b) P1.5 HUD 结构:VBox + 4 个 Label ----
-		var hud_labels := ["StatusLabel", "AgentLabel", "ObservationLabel", "ActionLogLabel"]
+		# ---- 4b) HUD 观测面板核心 Label ----
+		var hud_base := "HUD/Root/HBox/ObservePanel/ObserveVBox"
+		var hud_labels := {
+			"StatusLabel": hud_base + "/StatusLabel",
+			"AgentLabel": hud_base + "/AgentLabel",
+			"ObservationLabel": hud_base + "/ObsScroll/ObservationLabel",
+			"ActionLogLabel": hud_base + "/ActionScroll/ActionLogLabel",
+			"DecisionLabel": hud_base + "/DecisionScroll/DecisionLabel",
+		}
 		var hud_missing := []
-		for n in hud_labels:
-			if not inst.has_node("HUD/VBox/" + n):
-				hud_missing.append(n)
+		for label_name in hud_labels:
+			if not inst.has_node(hud_labels[label_name]):
+				hud_missing.append(label_name)
 		if hud_missing.is_empty():
 			passed += 1
-			print("[OK]   HUD/VBox has all 4 labels: ", hud_labels)
+			print("[OK]   HUD observe panel has core labels: ", hud_labels.keys())
 		else:
 			failed += 1
-			printerr("[FAIL] HUD/VBox missing labels: ", hud_missing)
+			printerr("[FAIL] HUD observe panel missing labels: ", hud_missing)
 		inst.free()
 
 	# ---- 5) P1.5 Player 可观测接口 ----
@@ -239,13 +246,19 @@ func _init() -> void:
 		else:
 			failed += 1
 			printerr("[FAIL] tick_cost WAIT: ", tc2)
-		# IMPLEMENTED_KINDS 应只含 MOVE_TO (P2 阶段)
-		if A.IMPLEMENTED_KINDS.size() == 1 and A.IMPLEMENTED_KINDS[0] == "MOVE_TO":
+		# IMPLEMENTED_KINDS 应包含核心原语
+		var required_kinds := ["MOVE_TO", "SAY", "PICK_UP", "OBSERVE"]
+		var kinds_ok := true
+		for kind in required_kinds:
+			if kind not in A.IMPLEMENTED_KINDS:
+				kinds_ok = false
+				break
+		if kinds_ok:
 			passed += 1
-			print("[OK]   actions.IMPLEMENTED_KINDS = [MOVE_TO] in P2")
+			print("[OK]   actions.IMPLEMENTED_KINDS includes core primitives: ", required_kinds)
 		else:
 			failed += 1
-			printerr("[FAIL] IMPLEMENTED_KINDS: ", A.IMPLEMENTED_KINDS)
+			printerr("[FAIL] IMPLEMENTED_KINDS missing core primitive: ", A.IMPLEMENTED_KINDS)
 
 	# ---- 8) P2 — Player 队列接口 ----
 	var P2: Script = load("res://scripts/player.gd")
@@ -267,12 +280,12 @@ func _init() -> void:
 		else:
 			failed += 1
 			printerr("[FAIL] enqueue_action legal: queue=", p2._action_queue.size())
-		# 注入未实现的 SAY -> 拒绝 + 写 log
+		# 注入未实现的 EMOTE -> 拒绝 + 写 log
 		var log_before: int = p2.action_log.size()
-		p2.enqueue_action({"kind": "SAY", "params": {"to": "x", "text": "y"}})
+		p2.enqueue_action({"kind": "EMOTE", "params": {"emoji": "?"}})
 		if p2._action_queue.size() == 1 and p2.action_log.size() > log_before:
 			passed += 1
-			print("[OK]   player.enqueue_action unimplemented SAY rejected, logged")
+			print("[OK]   player.enqueue_action unimplemented EMOTE rejected, logged")
 		else:
 			failed += 1
 			printerr("[FAIL] enqueue_action unimplemented: queue=", p2._action_queue.size(), " log=", p2.action_log.size())
@@ -305,7 +318,7 @@ func _init() -> void:
 	# ---- 总结 ----
 	print("")
 	print("================================")
-	print("P1 + P1.5 + P2 smoke test: %d passed, %d failed" % [passed, failed])
+	print("smoke test: %d passed, %d failed" % [passed, failed])
 	print("================================")
 	if failed > 0:
 		quit(1)

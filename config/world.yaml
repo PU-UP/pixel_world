@@ -7,31 +7,31 @@ world:
 
 items:
   driftwood:
-    display_name: "Driftwood"
-    description: "A sturdy piece of driftwood from the beach."
+    display_name: "浮木"
+    description: "海滩上冲来的一块结实浮木。"
     color: [0.55, 0.40, 0.28]
-    use_text: "Hefted the driftwood; light but solid."
+    use_text: "掂了掂浮木，轻巧但结实。"
   seashell:
-    display_name: "Seashell"
-    description: "A pale shell washed ashore."
+    display_name: "贝壳"
+    description: "被海浪冲上岸的浅色贝壳。"
     color: [0.92, 0.88, 0.82]
-    use_text: "Turned the seashell over in your hands."
+    use_text: "把贝壳翻来覆去看了看。"
   berry_bush:
-    display_name: "Wild Berries"
-    description: "Edible berries growing wild."
+    display_name: "野莓"
+    description: "野生可食用的浆果。"
     color: [0.72, 0.18, 0.35]
     consumable: true
-    use_text: "Ate wild berries; feeling a bit refreshed."
+    use_text: "吃了几颗野莓，精神好了一些。"
   flint:
-    display_name: "Flint Stone"
-    description: "A sharp stone useful for tools."
+    display_name: "燧石"
+    description: "锋利的石头，可做工具。"
     color: [0.50, 0.52, 0.55]
-    use_text: "Struck the flint; a few sparks fly."
+    use_text: "敲击燧石，迸出几点火星。"
   rope:
-    display_name: "Coiled Rope"
-    description: "Old rope left near the ruins."
+    display_name: "绳索"
+    description: "废墟旁遗落的一卷旧绳。"
     color: [0.62, 0.48, 0.32]
-    use_text: "Checked the rope coil; still usable."
+    use_text: "检查了绳圈，还能用。"
 
 ground_items:
   - item: driftwood
@@ -51,47 +51,47 @@ ground_items:
 
 regions:
   - id: south_beach
-    name: "South Beach"
+    name: "南滩"
     center: [32, 50]
     radius: 10
   - id: central_meadow
-    name: "Central Meadow"
+    name: "中央草甸"
     center: [32, 32]
     radius: 14
   - id: north_ridge
-    name: "North Ridge"
+    name: "北脊"
     center: [32, 18]
     radius: 10
   - id: east_shore
-    name: "East Shore"
+    name: "东岸"
     center: [48, 34]
     radius: 8
   - id: west_grove
-    name: "West Grove"
+    name: "西林"
     center: [18, 34]
     radius: 8
 
 events:
   - id: seabirds
-    text: "Seabirds circle low over the south beach."
+    text: "海鸟在南滩低空盘旋。"
     interval_ticks: 90
     duration_ticks: 15
     first_tick: 25
     regions: [south_beach]
   - id: breeze
-    text: "A cool breeze rustles the central meadow."
+    text: "一阵凉风拂过中央草甸。"
     interval_ticks: 70
     duration_ticks: 12
     first_tick: 15
     regions: [central_meadow]
   - id: ridge_wind
-    text: "Wind whistles along the north ridge."
+    text: "北风在北脊上呼啸而过。"
     interval_ticks: 100
     duration_ticks: 14
     first_tick: 40
     regions: [north_ridge]
   - id: island_calm
-    text: "The island feels unusually calm for a moment."
+    text: "整座岛屿忽然安静下来。"
     interval_ticks: 120
     duration_ticks: 10
     first_tick: 60

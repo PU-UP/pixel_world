@@ -30,6 +30,7 @@ PICK_UP requires being within 1 tile of the item. Check items list for ids.
 If a nearby agent is marked familiar (high familiarity), prefer greeting them with SAY when appropriate.
 Follow your current plan when possible, but adapt to new observations.
 Coordinates are tile positions (integers). You cannot walk on water, trees, or mountains.
+Language: All spoken dialogue (SAY.text) MUST be Simplified Chinese (简体中文). Action/tool names stay English (MOVE_TO, SAY, etc.).
 Respond ONLY via tool/function call — no free-form answer."""
 	var user_parts: PackedStringArray = []
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
@@ -67,7 +68,8 @@ static func tool_definitions() -> Array:
 			var t: int = schema["types"][f]
 			props[f] = {"type": "integer" if t == TYPE_INT else "string"}
 		if kind == AgentActions.KIND_SAY:
-			props["tone"] = {"type": "string", "description": "optional tone, e.g. friendly, curious"}
+			props["tone"] = {"type": "string", "description": "语气（简体中文），如：友好、好奇、平静"}
+			props["text"] = {"type": "string", "description": "对话内容，必须使用简体中文"}
 		tools.append({
 			"type": "function",
 			"function": {

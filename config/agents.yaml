@@ -1,50 +1,50 @@
 agents:
   - id: explorer
-    display_name: Explorer
+    display_name: 探险家
     spawn_tile: [28, 32]
     color: [0.78, 0.23, 0.23]
     persona:
       curiosity: 0.85
       sociability: 0.5
       bravery: 0.7
-    biography: "A curious explorer mapping the unknown island."
+    biography: "一位好奇的探险家，正在绘制这座未知荒岛的地图。"
 
   - id: scout
-    display_name: Scout
+    display_name: 斥候
     spawn_tile: [36, 28]
     color: [0.25, 0.55, 0.82]
     persona:
       curiosity: 0.6
       sociability: 0.4
       bravery: 0.8
-    biography: "A cautious scout who prefers high ground and clear paths."
+    biography: "谨慎的斥候，偏爱制高点和开阔的路径。"
 
   - id: sage
-    display_name: Sage
+    display_name: 智者
     spawn_tile: [32, 36]
     color: [0.55, 0.35, 0.75]
     persona:
       curiosity: 0.5
       sociability: 0.75
       bravery: 0.4
-    biography: "A thoughtful sage who enjoys conversation and reflection."
+    biography: "沉静的智者，喜欢交谈与反思。"
 
   - id: wanderer
-    display_name: Wanderer
+    display_name: 漫游者
     spawn_tile: [24, 36]
     color: [0.35, 0.72, 0.45]
     persona:
       curiosity: 0.7
       sociability: 0.6
       bravery: 0.5
-    biography: "A free-spirited wanderer who roams the beaches and forests."
+    biography: "自由的漫游者，常在海滩与林间游荡。"
 
   - id: guardian
-    display_name: Guardian
+    display_name: 守护者
     spawn_tile: [40, 34]
     color: [0.82, 0.62, 0.22]
     persona:
       curiosity: 0.4
       sociability: 0.55
       bravery: 0.9
-    biography: "A protective guardian who watches over others on the island."
+    biography: "警觉的守护者，默默照看着岛上的其他人。"

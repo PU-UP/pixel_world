@@ -12,9 +12,10 @@ static func build_messages(
 	relationship_lines: PackedStringArray,
 ) -> Array:
 	var system := """You are an autonomous agent planning the next stretch of activity on a 2D pixel island.
-Write a numbered list of 5-7 short steps you intend to follow.
-Steps must use only available actions: MOVE_TO (tile x,y), SAY (to agent_id or broadcast).
-Prefer social steps (SAY hello) when you know familiar agents nearby.
+Write a numbered list of 5-7 short steps you intend to follow, in Simplified Chinese (简体中文).
+Steps may reference action primitives by English name: MOVE_TO (tile x,y), SAY (to agent_id or broadcast), PICK_UP, DROP, USE, GIVE, OBSERVE.
+Example step: "1. MOVE_TO 前往沙滩 (32,50)，向 scout 用 SAY 打招呼"
+Prefer social steps (SAY) when you know familiar agents nearby.
 One step per line, format: "1. ..." """
 	var parts: PackedStringArray = []
 	parts.append("=== Persona ===\n%s" % persona_desc)

@@ -32,7 +32,7 @@ var _comm = null        # CommRouter
 var _last_dir: Vector2 = Vector2.DOWN
 var _last_position: Vector2 = Vector2.ZERO
 var _last_observation_tick: int = -1
-var _observation_text: String = "(no observation yet)"
+var _observation_text: String = "（尚无观察）"
 var _heard_messages: Array = []
 var inventory: Array = []
 var action_log: Array = []
@@ -433,7 +433,7 @@ func get_recent_heard_lines(limit: int = 4) -> PackedStringArray:
 	var n: int = mini(limit, _heard_messages.size())
 	for i in range(_heard_messages.size() - n, _heard_messages.size()):
 		var m: Dictionary = _heard_messages[i]
-		lines.append("t%d %s: %s" % [int(m.get("tick", -1)), str(m.get("from", "?")), str(m.get("text", ""))])
+		lines.append("t%d %s说: %s" % [int(m.get("tick", -1)), str(m.get("from", "?")), str(m.get("text", ""))])
 	return lines
 
 
@@ -480,39 +480,39 @@ func _refresh_observation_if_needed() -> void:
 	var parts: PackedStringArray = []
 	for k in counts.keys():
 		parts.append("%s×%d" % [k, counts[k]])
-	var terrain_text := ", ".join(parts) if parts.size() > 0 else "(empty)"
+	var terrain_text := ", ".join(parts) if parts.size() > 0 else "（空）"
 	var agent_parts: PackedStringArray = []
 	if _comm != null:
 		for p in _comm.players_in_perception(self):
 			var pt: Vector2i = p.get_tile_position()
 			agent_parts.append("%s@(%d,%d)" % [str(p.agent_id), pt.x, pt.y])
 	if agent_parts.size() > 0:
-		_observation_text = "region=%s | %s | agents: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
+		_observation_text = "区域=%s | %s | 附近角色: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
 	else:
-		_observation_text = "region=%s | %s" % [region_name, terrain_text]
+		_observation_text = "区域=%s | %s" % [region_name, terrain_text]
 	var item_parts: PackedStringArray = []
 	if _world != null and _world.state != null:
 		for item in _world.state.items_near(Vector2i(cx, cy), r):
 			var item_tile: Vector2i = item.get("tile", Vector2i.ZERO)
 			item_parts.append("%s@(%d,%d)" % [str(item.get("item_id", "?")), item_tile.x, item_tile.y])
 	if item_parts.size() > 0:
-		_observation_text += " | items: " + ", ".join(item_parts)
+		_observation_text += " | 物品: " + ", ".join(item_parts)
 	if _world.events != null:
 		var event_lines: PackedStringArray = _world.events.lines_for_tile(Vector2i(cx, cy))
 		if event_lines.size() > 0:
-			_observation_text += " | event: " + event_lines[0]
+			_observation_text += " | 事件: " + event_lines[0]
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
-		_observation_text += " | heard: " + "; ".join(heard)
+		_observation_text += " | 听到: " + "; ".join(heard)
 
 func _tile_name(t: int) -> String:
 	match t:
-		0: return "grass"
-		1: return "sand"
-		2: return "water"
-		3: return "tree"
-		4: return "mountain"
-		_: return "?"
+		0: return "草地"
+		1: return "沙滩"
+		2: return "水域"
+		3: return "树林"
+		4: return "山地"
+		_: return "未知"
 
 func _maybe_log_position_change() -> void:
 	if _world == null or _clock == null:
@@ -575,7 +575,7 @@ func get_nearby_item_lines() -> PackedStringArray:
 		return lines
 	for item in _world.state.items_near(get_tile_position(), Config.world_item_pickup_radius() + 1):
 		var t: Vector2i = item.get("tile", Vector2i.ZERO)
-		lines.append("%s (%s) at (%d,%d)" % [
+		lines.append("%s（%s）在 (%d,%d)" % [
 			str(item.get("item_id", "")),
 			str(item.get("display_name", "")),
 			t.x, t.y,

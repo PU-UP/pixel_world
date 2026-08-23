@@ -22,7 +22,7 @@ func reset() -> void:
 
 
 func region_name_at(tile: Vector2i) -> String:
-	return str(region_at(tile).get("name", "wilderness"))
+	return str(region_at(tile).get("name", "荒野"))
 
 
 func region_id_at(tile: Vector2i) -> String:
@@ -47,7 +47,7 @@ func region_at(tile: Vector2i) -> Dictionary:
 			best_id = str(reg.get("id", ""))
 			best_name = str(reg.get("name", reg.get("id", "")))
 	if best_name.is_empty():
-		return {"id": "", "name": "wilderness"}
+		return {"id": "", "name": "荒野"}
 	return {"id": best_id, "name": best_name}
 
 

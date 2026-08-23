@@ -12,13 +12,14 @@ const LoggerScript = preload("res://scripts/observability/logger.gd")
 const CoordinatorScript = preload("res://scripts/agent/coordinator.gd")
 const DecisionScript = preload("res://scripts/agent/decision.gd")
 const MinimapScript = preload("res://scripts/ui/minimap.gd")
+const CameraRigScript = preload("res://scripts/ui/camera_rig.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
 @onready var _world: WorldScript = $World
 @onready var _agents_root: Node2D = $Agents
 @onready var _coordinator: CoordinatorScript = $AgentCoordinator
-@onready var _camera: Camera2D = $Camera2D
+@onready var _camera: CameraRigScript = $Camera2D
 @onready var _clock: ClockScript = $GameClock
 @onready var _hud: CanvasLayer = $HUD
 @onready var _hud_root: Control = $HUD/Root
@@ -27,6 +28,9 @@ enum ControlMode { MANUAL, AGENT }
 @onready var _hud_observation: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/ObsScroll/ObservationLabel
 @onready var _hud_action_log: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/ActionScroll/ActionLogLabel
 @onready var _hud_decision: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/DecisionScroll/DecisionLabel
+@onready var _obs_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/ObsScroll
+@onready var _action_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/ActionScroll
+@onready var _decision_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/DecisionScroll
 @onready var _memory_panel: PanelContainer = $HUD/Root/HBox/MemoryPanel
 @onready var _hud_memory_title: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader/MemoryTitle
 @onready var _hud_reflection: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/ReflectionScroll/ReflectionLabel
@@ -44,6 +48,7 @@ var _memory_visible: bool = false
 var _relation_visible: bool = false
 var _minimap_visible: bool = false
 var _control_mode: int = ControlMode.MANUAL
+var _observe_details_visible: bool = true
 
 
 func _ready() -> void:
@@ -62,6 +67,8 @@ func _ready() -> void:
 	_coordinator.roster_changed.connect(_on_roster_changed)
 	_connect_decision_signals()
 	_set_control_mode(_control_mode_from_config())
+	_hud_status.gui_input.connect(_on_status_label_gui_input)
+	_apply_observe_details_visibility()
 
 
 func _connect_decision_signals() -> void:
@@ -92,8 +99,8 @@ func _on_roster_changed() -> void:
 
 func _process(_delta: float) -> void:
 	var agent := _current_agent()
-	if agent != null:
-		_camera.global_position = agent.global_position
+	_camera.set_follow_target(agent)
+	_camera.apply_follow()
 	if _debug_visible:
 		_update_hud()
 	if _memory_visible:
@@ -150,7 +157,8 @@ func _update_hud() -> void:
 		llm_str = "LLM:%d/%d" % [_llm.inflight_count(), _llm.inflight_count() + _llm.queue_length()]
 	var tok: int = int(_logger.stats().get("tokens_total", 0))
 	var roster: String = "%d/%d" % [_coordinator.selected_index + 1, _coordinator.spawn_count()]
-	_hud_status.text = "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s" % [
+	var zoom_pct: int = int(round(_camera.zoom.x * 100.0))
+	var status_core := "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s  缩放:%d%%" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
@@ -158,7 +166,12 @@ func _update_hud() -> void:
 		llm_str,
 		tok,
 		roster,
+		zoom_pct,
 	]
+	if not _observe_details_visible:
+		_hud_status.text = "【点击展开】%s" % status_core
+		return
+	_hud_status.text = "【点击收起】%s" % status_core
 	var selected: PlayerScript = _current_agent()
 	if selected == null:
 		_hud_agent.text = "角色：（无）"
@@ -168,13 +181,13 @@ func _update_hud() -> void:
 		return
 	var rec := _selected_record()
 	var name_prefix := str(rec["persona"].display_name) if not rec.is_empty() else str(selected.agent_id)
-	_hud_agent.text = _truncate("%s | %s" % [name_prefix, selected.get_status_line()], 72)
-	_hud_observation.text = "观察：%s" % _truncate(selected.get_observation(), 96)
+	_hud_agent.text = "%s | %s" % [name_prefix, selected.get_status_line()]
+	_hud_observation.text = "观察：%s" % selected.get_observation()
 	var lines := selected.get_action_log_lines(4)
 	_hud_action_log.text = "\n".join(lines) if lines.size() > 0 else "（无）"
 	var decision := _selected_decision()
 	var decision_text := decision.get_last_decision_text() if decision != null else "（无）"
-	_hud_decision.text = "决策：%s" % _truncate(decision_text, 120)
+	_hud_decision.text = "决策：%s" % decision_text
 
 
 func _update_memory_hud() -> void:
@@ -189,7 +202,7 @@ func _update_memory_hud() -> void:
 	var agent_label := "%s" % str(player.agent_id)
 	_hud_memory_title.text = "记忆 — %s（%s）  Tab切换  F4关闭" % [persona.display_name, agent_label]
 	var limit: int = int(Config.memory_cfg().get("hud", {}).get("display_limit", 50))
-	_hud_reflection.text = _truncate(rec["reflection"].get_last_reflection_text(), 500)
+	_hud_reflection.text = rec["reflection"].get_last_reflection_text()
 	_hud_memory.text = rec["memory"].format_for_hud(limit, "[%s]" % agent_label)
 
 
@@ -218,6 +231,27 @@ func _truncate(text: String, max_len: int) -> String:
 	if text.length() <= max_len:
 		return text
 	return text.substr(0, max_len - 1) + "…"
+
+
+func _on_status_label_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_observe_details_visible = not _observe_details_visible
+		_apply_observe_details_visibility()
+		if _debug_visible:
+			_update_hud()
+
+
+func _apply_observe_details_visibility() -> void:
+	var show := _observe_details_visible and _debug_visible
+	_hud_agent.visible = show
+	_obs_scroll.visible = show
+	_action_scroll.visible = show
+	_decision_scroll.visible = show
+
+
+func _input(event: InputEvent) -> void:
+	if _camera.handle_input(event):
+		get_viewport().set_input_as_handled()
 
 
 func _on_decision_made(_tick: int, _raw: String, _action: Dictionary, _result: Dictionary) -> void:
@@ -256,6 +290,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_memory_panel.visible = _memory_visible
 			_relation_panel.visible = _relation_visible
 			_minimap.visible = _minimap_visible
+		_apply_observe_details_visibility()
 	elif event.is_action_pressed("toggle_minimap"):
 		_minimap_visible = not _minimap_visible
 		_minimap.visible = _minimap_visible and _debug_visible
@@ -324,3 +359,4 @@ func _reset_world() -> void:
 	if _relation_visible:
 		_update_relation_hud()
 	_refresh_minimap()
+	_camera.reset_view()
