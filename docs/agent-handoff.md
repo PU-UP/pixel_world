@@ -115,6 +115,56 @@ data/             运行时，不进 git
 - 跑 100+ tick 对比 anomalies、tokens/tick（参考 P8.3 session `12-50-06`）
 - sage 长独白：可调 `max_say_chars` 或相似度门控
 
+### P2.6 — 多 agent 扎堆「卡死」互相挡路（高）⚠️ 已观测
+
+**现象（产品方反馈）**：约 3 个 agent 聚在同一区域（常见于社交 `SAY` / `move_closer` / `approach_agent` 后），彼此 **无法通过**，长时间堆在一起，整体几乎不再移动。
+
+**根因分析（代码级，无需游戏录像）**：
+
+| 层 | 现状 | 后果 |
+|---|---|---|
+| **A\*** `pathfinding.gd` | 只判断 `world.is_walkable_tile`（草地/沙滩） | **不把其他 agent 当作障碍**；多人可同时规划到相邻格或同一会合点 |
+| **移动** `player.gd` | `CharacterBody2D` + 14×14 `CollisionShape2D` + `move_and_slide()` | agent **物理碰撞**；挤在一起时推不动，但状态仍为 `WALKING` |
+| **路径推进** `_advance_along_path` | 仅当 `dist < 1.0` 才 `path_idx++` | 被挡住时 **永远到不了 waypoint**，路径 **永不结束** |
+| **决策** `decision.gd` | `skip_while_walking: true` → `is_busy()` 时 **不调 LLM** | 卡住的 agent **无法重新决策**（不能 WAIT / 换目标 / 绕路） |
+| **社交** gate | `move_closer` / `approach_agent` 常 `MOVE_TO` **对方脚下格** | explorer/sage/guardian 等趋向 **同一坐标**，加剧拥堵 |
+| **日志** `logger.gd` `_track_stuck_agents` | 只统计 snapshot 时 **idle 同格** | **WALKING 顶墙** 不会被记为 stuck |
+
+**典型复现场景**：中央草甸 `(48,48)` 附近 — sage 广播邀约 → explorer/guardian `MOVE_TO` 靠近 sage → 三人占 3 邻格或争同一格 → 第四人（scout/wanderer）再靠近 → 物理碰撞链式阻塞。
+
+**日志中如何验证**（给无录像的 agent）：
+
+```powershell
+python tools/summarize_session.py
+# 关注：某 agent 长时间 walking + queue_len>0 + 坐标抖动或不变
+# digest：同一 tick 段内多 agent 坐标曼哈顿距离 ≤2 且 action 多为 MOVE_TO
+# jsonl：action_result MOVE_TO ok + path_len>0，但后续 snapshot state 长期 walking
+```
+
+**解决方案（建议分阶段，需写入 `AGENTS.md` 移动语义后实现）**：
+
+| 方案 | 做法 | 优点 | 缺点 |
+|---|---|---|---|
+| **A. 移动超时解锁**（推荐 **先做**） | `player.gd`：WALKING 时若 N tick 内 `global_position` 位移 &lt; ε，abort 路径 → `IDLE`，记 `movement_stuck` anomaly，允许重新决策 | 改动小，立刻解除「永久 busy」 | 不解决拥堵，只避免死锁 |
+| **B. 寻路占格** | `world/state.gd` 维护 `agent_tile` 占用；A\* 跳过被占格（或仅跳过非目标占格） | 符合「一格一人」直觉 | 需协调占格释放、目标格例外 |
+| **C. agent 间不碰撞** | Godot `collision_layer`：agent 不与 agent 层碰撞，只与地形（若有） | 实现快，GBA 常见 | 精灵可重叠，观感略假 |
+| **D. 会合语义** | `move_closer` / `approach_agent` 不指向 `other.tile`，而是 **邻格环** 上最近可走且未占用的格 | 减少社交扎堆抢中心格 | 需 `resolve_adjacent_meeting_tile()` |
+| **E. 社交原地** | 已在 `audio` 内则 **不 redirect MOVE**，直接 SAY | 减少无意义靠近 | 需区分「看得见但听不见」 |
+
+**推荐实施顺序**：
+
+```
+P2.6a 移动超时 + movement_stuck 日志（1 天）
+  → P2.6b move_closer 改为邻格会合点（1 天）
+  → P2.6c A* 占格 或 agent 软碰撞（2 天，二选一，在 AGENTS.md 定稿）
+```
+
+**验收标准**：
+
+- 三人围聊 50 tick 后仍能各自离开或继续行动（无永久 `walking`）
+- `data/logs` 出现 `movement_stuck` 时 agent 能在下一决策 tick 恢复
+- digest 中同区域 agent 不再出现 **全员 walking + 坐标不变 &gt;30 tick**
+
 ---
 
 ## 4. 建议迭代顺序
@@ -122,12 +172,14 @@ data/             运行时，不进 git
 ```
 P2.1 观察者上帝模式（默认全可视 HUD）
   → P2.2 agent 精灵/物品按 VISIBLE 裁剪 + 灰区地形快照
+  → P2.6a 移动卡死解锁（与 P2.2 可并行，建议尽早）
+  → P2.6b/c 会合语义 + 占格/碰撞策略
   → P2.3 再探索刷新快照
   → P2.4 SHARE_MAP 与快照模型对齐
   → P2.5 日志回归 + prompt 微调
 ```
 
-预估：**P2.1 + P2.2** 约 3–5 天（渲染 + 感知对齐是核心）。
+预估：**P2.1 + P2.2** 约 3–5 天；**P2.6a** 约 1 天（建议插队）。
 
 ---
 
@@ -156,4 +208,4 @@ docs/v2.0-acceptance.md
 
 ---
 
-_最后更新：v2.0 验收阶段。修复 `main.gd` 重复 `_control_mode_label` 后游戏可运行。_
+_最后更新：v2.0 验收 + P2.6 多 agent 卡死分析（产品方观测）。_
