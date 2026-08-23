@@ -2,7 +2,7 @@ extends Node
 class_name ObservabilityLogger
 ##
 ## 维护向观测日志 — data/logs/{session}.jsonl + {session}_summary.json
-## 记录 LLM 调用（含 token）、决策结果；退出时写 session 汇总
+## P8: 结构化世界事件 + 快照 + 异常标记；离线 digest 见 tools/digest_session.py
 ##
 
 var _session_id: String = ""
@@ -22,7 +22,15 @@ var _stats: Dictionary = {
 	"by_request_type": {},
 	"by_agent": {},
 	"by_action_kind": {},
+	"world_events": 0,
+	"says": 0,
+	"item_actions": 0,
+	"snapshots": 0,
 }
+
+var _anomalies: Array = []
+var _stuck_tracker: Dictionary = {}  # agent_id -> {tile_key, count}
+var _last_say: Dictionary = {}  # agent_id -> {text, tick}
 
 
 func _ready() -> void:
@@ -48,7 +56,14 @@ func _begin_session() -> void:
 		"by_request_type": {},
 		"by_agent": {},
 		"by_action_kind": {},
+		"world_events": 0,
+		"says": 0,
+		"item_actions": 0,
+		"snapshots": 0,
 	}
+	_anomalies.clear()
+	_stuck_tracker.clear()
+	_last_say.clear()
 	log_event("session_start", {"session_id": _session_id})
 
 
@@ -67,6 +82,10 @@ func summary_path() -> String:
 
 func stats() -> Dictionary:
 	return _stats.duplicate(true)
+
+
+func anomalies() -> Array:
+	return _anomalies.duplicate(true)
 
 
 func log_event(event: String, fields: Dictionary = {}) -> void:
@@ -94,6 +113,12 @@ func log_llm_response(meta: Dictionary, body: Dictionary, ok: bool, error: Strin
 		_bump_agent(agent_id, "tokens_total", total_t)
 	if not ok:
 		_stats["llm_errors"] += 1
+		_record_anomaly(
+			"llm_error",
+			int(meta.get("tick", -1)),
+			agent_id,
+			"%s: %s" % [req_type, error],
+		)
 
 	log_event("llm_call", {
 		"request_type": req_type,
@@ -112,8 +137,23 @@ func log_decision(entry: Dictionary) -> void:
 	_stats["decisions"] += 1
 	var agent_id: String = str(entry.get("agent_id", ""))
 	var ok: bool = str(entry.get("result", "")) == "ok"
+	var tick: int = int(entry.get("tick", -1))
 	if not ok:
 		_stats["decision_errors"] += 1
+		_record_anomaly(
+			"decision_error",
+			tick,
+			agent_id,
+			str(entry.get("error", "")),
+		)
+	var blocked: Array = entry.get("guard_blocked", [])
+	if blocked.size() > 0:
+		_record_anomaly(
+			"guard_blocked",
+			tick,
+			agent_id,
+			"patterns=%s" % str(blocked),
+		)
 	var action: Dictionary = entry.get("parsed_action", {})
 	var kind: String = str(action.get("kind", ""))
 	if not kind.is_empty():
@@ -129,6 +169,89 @@ func log_decision(entry: Dictionary) -> void:
 	_write_line(row)
 
 
+func log_say(
+	speaker_id: String,
+	target_id: String,
+	text: String,
+	tick: int,
+	recipient_ids: Array,
+	ok: bool,
+	error: String = "",
+	tone: String = "neutral",
+) -> void:
+	_stats["says"] += 1
+	log_event("say", {
+		"tick": tick,
+		"speaker": speaker_id,
+		"target": target_id,
+		"text": text,
+		"tone": tone,
+		"recipients": recipient_ids,
+		"ok": ok,
+		"error": error,
+	})
+	if not ok:
+		_record_anomaly("say_failed", tick, speaker_id, error)
+	else:
+		_check_repeat_say(speaker_id, text, tick)
+
+
+func log_action_result(
+	agent_id: String,
+	tick: int,
+	kind: String,
+	params: Dictionary,
+	ok: bool,
+	detail: String,
+	error: String = "",
+) -> void:
+	var item_kinds: Array = ["PICK_UP", "DROP", "USE", "GIVE"]
+	if kind in item_kinds:
+		_stats["item_actions"] += 1
+	log_event("action_result", {
+		"tick": tick,
+		"agent_id": agent_id,
+		"kind": kind,
+		"params": params,
+		"ok": ok,
+		"detail": detail,
+		"error": error,
+	})
+	if not ok:
+		_record_anomaly("action_failed", tick, agent_id, "%s: %s" % [kind, error if not error.is_empty() else detail])
+
+
+func log_reflection(agent_id: String, tick: int, text: String) -> void:
+	log_event("reflection", {
+		"tick": tick,
+		"agent_id": agent_id,
+		"text": text,
+	})
+
+
+func log_plan(agent_id: String, tick: int, text: String, steps: Array) -> void:
+	log_event("plan", {
+		"tick": tick,
+		"agent_id": agent_id,
+		"text": text,
+		"steps": steps,
+	})
+
+
+func log_world_snapshot(tick: int, agents: Array) -> void:
+	_stats["snapshots"] += 1
+	log_event("world_snapshot", {
+		"tick": tick,
+		"agents": agents,
+	})
+	_track_stuck_agents(tick, agents)
+
+
+func log_world_event_logged(event_id: String, text: String, tick: int) -> void:
+	_stats["world_events"] += 1
+	log_event("world_event", {"event_id": event_id, "text": text, "tick": tick})
+
+
 func rotate_session(reason: String = "rotate") -> void:
 	if not _summary_written:
 		write_session_summary({"exit": reason})
@@ -139,12 +262,17 @@ func write_session_summary(extra: Dictionary = {}) -> void:
 	if _summary_path.is_empty() or _summary_written:
 		return
 	_summary_written = true
+	var digest_base := _log_path.replace(".jsonl", "")
 	var summary := {
 		"session_id": _session_id,
 		"started_at": _started_at,
 		"ended_at": Time.get_datetime_string_from_system(),
 		"log_path": _log_path,
+		"digest_md_path": "%s_digest.md" % digest_base,
+		"digest_json_path": "%s_digest.json" % digest_base,
+		"digest_tool": "python tools/digest_session.py",
 		"stats": _stats.duplicate(true),
+		"anomalies": _anomalies.duplicate(true),
 	}
 	for k in extra:
 		summary[k] = extra[k]
@@ -155,6 +283,63 @@ func write_session_summary(extra: Dictionary = {}) -> void:
 	file.store_string(JSON.stringify(summary, "\t"))
 	file.close()
 	log_event("session_end", {"summary_path": _summary_path})
+
+
+func _record_anomaly(kind: String, tick: int, agent_id: String, detail: String) -> void:
+	var row := {
+		"kind": kind,
+		"tick": tick,
+		"agent_id": agent_id,
+		"detail": detail,
+		"ts": Time.get_datetime_string_from_system(),
+	}
+	_anomalies.append(row)
+	log_event("anomaly", row)
+
+
+func _check_repeat_say(agent_id: String, text: String, tick: int) -> void:
+	var window: int = int(Config.observability_cfg().get("repeat_say_window_ticks", 40))
+	var prev: Dictionary = _last_say.get(agent_id, {})
+	if prev.is_empty():
+		_last_say[agent_id] = {"text": text, "tick": tick}
+		return
+	if str(prev.get("text", "")) == text and tick - int(prev.get("tick", 0)) <= window:
+		_record_anomaly(
+			"repeat_say",
+			tick,
+			agent_id,
+			"repeated within %d ticks: %s" % [window, text.substr(0, 80)],
+		)
+	_last_say[agent_id] = {"text": text, "tick": tick}
+
+
+func _track_stuck_agents(tick: int, agents: Array) -> void:
+	var threshold: int = int(Config.observability_cfg().get("stuck_tile_threshold", 3))
+	for row in agents:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var aid: String = str(row.get("id", ""))
+		var tile_arr: Array = row.get("tile", [])
+		if aid.is_empty() or tile_arr.size() < 2:
+			continue
+		var key := "%d,%d" % [int(tile_arr[0]), int(tile_arr[1])]
+		var state: String = str(row.get("state", ""))
+		if state != "idle":
+			_stuck_tracker[aid] = {"tile_key": key, "count": 0}
+			continue
+		var prev: Dictionary = _stuck_tracker.get(aid, {})
+		if str(prev.get("tile_key", "")) == key:
+			var count: int = int(prev.get("count", 0)) + 1
+			_stuck_tracker[aid] = {"tile_key": key, "count": count}
+			if count == threshold:
+				_record_anomaly(
+					"stuck_idle",
+					tick,
+					aid,
+					"idle at (%s) for %d snapshots" % [key, count],
+				)
+		else:
+			_stuck_tracker[aid] = {"tile_key": key, "count": 1}
 
 
 func _write_line(entry: Dictionary) -> void:

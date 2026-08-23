@@ -83,7 +83,7 @@ func _connect_decision_signals() -> void:
 
 
 func _on_world_event(event_id: String, text: String, tick: int) -> void:
-	_logger.log_event("world_event", {"event_id": event_id, "text": text, "tick": tick})
+	_logger.log_world_event_logged(event_id, text, tick)
 
 
 func _on_roster_changed() -> void:

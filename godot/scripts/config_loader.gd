@@ -66,6 +66,18 @@ func decision_skip_while_walking() -> bool:
 	return bool(runtime.get("decision", {}).get("skip_while_walking", true))
 
 
+func decision_cfg() -> Dictionary:
+	return runtime.get("decision", {})
+
+
+func decision_repeat_say_block_ticks() -> int:
+	return int(decision_cfg().get("repeat_say_block_ticks", 40))
+
+
+func decision_min_ticks_between() -> int:
+	return int(decision_cfg().get("min_ticks_between", 0))
+
+
 func agent_config() -> Dictionary:
 	var list: Array = all_agents()
 	if list.is_empty():
@@ -107,6 +119,10 @@ func relationships_cfg() -> Dictionary:
 
 func persona_drift_cfg() -> Dictionary:
 	return runtime.get("persona_drift", {})
+
+
+func observability_cfg() -> Dictionary:
+	return runtime.get("observability", {})
 
 
 func world_item_pickup_radius() -> int:

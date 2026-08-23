@@ -76,6 +76,10 @@ func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Arra
 		var mem_tick: int = int(mem.get("tick", 0))
 		if current_tick - mem_tick > time_window:
 			continue
+		var cat: String = str(mem.get("category", ""))
+		var exclude: Array = cfg.get("exclude_categories", [])
+		if cat in exclude:
+			continue
 		var recency := 1.0
 		if time_window > 0:
 			recency = clampf(1.0 - float(current_tick - mem_tick) / float(time_window), 0.0, 1.0)

@@ -50,8 +50,10 @@ func cancel_pending() -> void:
 	_queue.clear()
 
 
-func request_decision(messages: Array, meta: Dictionary = {}) -> int:
+func request_decision(messages: Array, meta: Dictionary = {}, tools: Array = []) -> int:
 	meta["request_type"] = "decision"
+	if tools.size() > 0:
+		meta["tools"] = tools
 	return _enqueue(messages, meta, true)
 
 
@@ -70,6 +72,7 @@ func _enqueue(messages: Array, meta: Dictionary, use_tools: bool) -> int:
 		"meta": meta,
 		"attempt": 0,
 		"use_tools": use_tools,
+		"tools": meta.get("tools", []),
 	})
 	_pump_queue()
 	return id
@@ -111,7 +114,10 @@ func _send(http: HTTPRequest, item: Dictionary) -> void:
 		"thinking": {"type": "disabled"},
 	}
 	if bool(item.get("use_tools", false)):
-		body["tools"] = DecisionPrompt.tool_definitions()
+		var tools: Array = item.get("tools", [])
+		if tools.is_empty():
+			tools = DecisionPrompt.tool_definitions()
+		body["tools"] = tools
 		body["tool_choice"] = "required"
 	var headers := PackedStringArray([
 		"Content-Type: application/json",
@@ -144,9 +150,13 @@ func _on_request_completed(
 
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
 		var err_msg := "HTTP %d result=%d body=%s" % [response_code, result, body_text.substr(0, 200)]
+		var is_rate_limit := response_code == 429 or body_text.find("rate_limit") >= 0
 		if int(item.get("attempt", 0)) < _retry_max:
 			item["attempt"] = int(item["attempt"]) + 1
-			_queue.push_front(item)
+			if is_rate_limit:
+				_queue.push_back(item)
+			else:
+				_queue.push_front(item)
 		else:
 			_log_llm(item.get("meta", {}), body_dict, false, err_msg)
 			failed.emit(req_id, err_msg, item.get("meta", {}))

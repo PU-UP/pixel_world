@@ -49,11 +49,12 @@ func setup(world, clock, llm, logger, agents_root: Node2D, runtime_parent: Node)
 var _co_presence_counter: int = 0
 
 
-func _on_clock_tick(_t: int) -> void:
+func _on_clock_tick(tick: int) -> void:
 	_co_presence_counter += 1
 	if _co_presence_counter >= 10:
 		_co_presence_counter = 0
 		tick_co_presence()
+	_maybe_log_snapshot(tick)
 
 
 func spawn_count() -> int:
@@ -140,6 +141,7 @@ func _spawn_agents() -> void:
 		player.bind_world(_world)
 		player.bind_clock(_clock)
 		player.bind_comm(comm)
+		player.bind_observability(_logger)
 		player.apply_agent_config(cfg)
 		if cfg.has("color") and typeof(cfg["color"]) == TYPE_ARRAY and cfg["color"].size() >= 3:
 			var c: Array = cfg["color"]
@@ -175,8 +177,10 @@ func _spawn_agents() -> void:
 		_runtime_parent.add_child(reflection)
 
 		planning.setup(player, _clock, _llm, persona, memory, comm, relationships)
+		planning.set_logger(_logger)
 		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships)
 		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id))
+		reflection.set_logger(_logger)
 
 		records.append({
 			"player": player,
@@ -221,6 +225,35 @@ func _find_record(agent_id: String) -> Dictionary:
 		if str(rec["player"].agent_id) == agent_id:
 			return rec
 	return {}
+
+
+func _maybe_log_snapshot(tick: int) -> void:
+	if _logger == null:
+		return
+	var interval: int = int(Config.observability_cfg().get("snapshot_interval_ticks", 25))
+	if interval <= 0 or tick % interval != 0:
+		return
+	_logger.log_world_snapshot(tick, _build_agent_snapshots())
+
+
+func _build_agent_snapshots() -> Array:
+	var rows: Array = []
+	for rec in records:
+		var player: PlayerScript = rec["player"]
+		var tile: Vector2i = player.get_tile_position()
+		var region_name: String = ""
+		if _world != null and _world.state != null:
+			region_name = _world.state.region_name_at(tile)
+		rows.append({
+			"id": str(player.agent_id),
+			"display_name": str(rec["persona"].display_name),
+			"tile": [tile.x, tile.y],
+			"region": region_name,
+			"inventory": player.inventory.duplicate(),
+			"state": "walking" if player.is_busy() else "idle",
+			"queue_len": player.queued_action_count(),
+		})
+	return rows
 
 
 func _apply_persona(persona: PersonaScript, cfg: Dictionary) -> void:

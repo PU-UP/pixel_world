@@ -16,7 +16,7 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 - **世界交互** — 物品拾取/丢弃/使用/给予，区域事件，小地图
 - **观测与日志** — 实时 HUD（观察 / 决策 / 记忆 / 关系），`data/logs/` 会话记录
 
-未实现：`EMOTE` / `SLEEP` / `WAIT`；记忆检索为关键词近似（无向量）。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
+未实现：`EMOTE` / `SLEEP` / `WAIT`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
 
 ## 运行
 

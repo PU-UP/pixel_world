@@ -1,6 +1,6 @@
 class_name DecisionPrompt
 ##
-## LLM 决策 prompt 模板
+## LLM 决策 prompt + 上下文感知 tool schema（enum 限制合法 target）
 ##
 
 const AgentActions = preload("res://scripts/agent/actions.gd")
@@ -10,46 +10,66 @@ static func build_messages(
 	persona_desc: String,
 	observation: String,
 	status: String,
-	action_log: PackedStringArray,
 	memory_lines: PackedStringArray = [],
-	nearby_agent_ids: PackedStringArray = [],
+	perception_agent_ids: PackedStringArray = [],
+	audio_agent_ids: PackedStringArray = [],
+	observe_agent_ids: PackedStringArray = [],
+	ground_item_ids: PackedStringArray = [],
 	heard_lines: PackedStringArray = [],
 	plan_lines: PackedStringArray = [],
 	relationship_lines: PackedStringArray = [],
 	item_lines: PackedStringArray = [],
+	pending_reply_line: String = "",
+	last_say_text: String = "",
+	walkable_near_lines: PackedStringArray = [],
+	blocked_move_lines: PackedStringArray = [],
 ) -> Array:
 	var system := """You are an autonomous agent in a 2D pixel island world with other agents.
 Each game tick you must choose exactly ONE action using the provided tool.
-Available actions: MOVE_TO (walk to tile x,y), SAY (talk to agent_id or broadcast),
-PICK_UP (item id on ground within range), DROP (item id from your inventory),
-USE (item from inventory; on = self, agent_id, or nearby item id),
-GIVE (item from inventory to nearby agent_id within audio range),
-OBSERVE (target = agent_id or item id for extra details).
-SAY and GIVE only reach agents within audio range. Use nearby agent ids from the prompt.
-PICK_UP requires being within 1 tile of the item. Check items list for ids.
-If a nearby agent is marked familiar (high familiarity), prefer greeting them with SAY when appropriate.
-Follow your current plan when possible, but adapt to new observations.
-Coordinates are tile positions (integers). You cannot walk on water, trees, or mountains.
-Language: All spoken dialogue (SAY.text) MUST be Simplified Chinese (简体中文). Action/tool names stay English (MOVE_TO, SAY, etc.).
+Only tools listed in the request are available — pick one of them.
+MOVE_TO uses tile coordinates (integers). You cannot walk on water, trees, or mountains.
+If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
+If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
+Language: SAY.text MUST be Simplified Chinese (简体中文).
 Respond ONLY via tool/function call — no free-form answer."""
 	var user_parts: PackedStringArray = []
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
 	user_parts.append("=== Status ===\n%s" % status)
-	user_parts.append("=== Observation (terrain + nearby agents) ===\n%s" % observation)
+	user_parts.append("=== Observation (terrain + nearby) ===\n%s" % observation)
 	if plan_lines.size() > 0:
 		user_parts.append("=== Current plan (remaining steps) ===\n%s" % "\n".join(plan_lines))
-	if nearby_agent_ids.size() > 0:
-		user_parts.append("=== Nearby agent ids (for SAY.to) ===\n%s" % ", ".join(nearby_agent_ids))
-	if relationship_lines.size() > 0:
-		user_parts.append("=== Relationships (nearby) ===\n%s" % "\n".join(relationship_lines))
+	if walkable_near_lines.size() > 0:
+		user_parts.append(
+			"=== Walkable tiles near you (MOVE_TO targets) ===\n%s" % ", ".join(walkable_near_lines)
+		)
+	if blocked_move_lines.size() > 0:
+		user_parts.append(
+			"=== Failed MOVE_TO tiles (do NOT retry) ===\n%s" % "\n".join(blocked_move_lines)
+		)
+	if perception_agent_ids.size() > 0:
+		user_parts.append("=== Perception agent ids ===\n%s" % ", ".join(perception_agent_ids))
+	if audio_agent_ids.size() > 0:
+		user_parts.append("=== Audio range agent ids (SAY.to / GIVE.to) ===\n%s" % ", ".join(audio_agent_ids))
+	else:
+		user_parts.append("=== Audio range agent ids ===\n(none — use broadcast or MOVE_TO closer)")
+	if observe_agent_ids.size() > 0:
+		user_parts.append("=== OBSERVE legal agent ids ===\n%s" % ", ".join(observe_agent_ids))
+	if ground_item_ids.size() > 0:
+		user_parts.append("=== OBSERVE / PICK_UP legal item ids ===\n%s" % ", ".join(ground_item_ids))
 	if item_lines.size() > 0:
-		user_parts.append("=== Ground items (nearby, for PICK_UP.item) ===\n%s" % "\n".join(item_lines))
+		user_parts.append("=== Ground items (detail) ===\n%s" % "\n".join(item_lines))
+	if not pending_reply_line.is_empty():
+		user_parts.append(
+			"=== Pending reply (must answer with SAY, new content) ===\n%s" % pending_reply_line
+		)
+	if not last_say_text.is_empty():
+		user_parts.append("=== Your last SAY (do not repeat) ===\n%s" % last_say_text)
 	if heard_lines.size() > 0:
 		user_parts.append("=== Recently heard speech ===\n%s" % "\n".join(heard_lines))
+	if relationship_lines.size() > 0:
+		user_parts.append("=== Relationships (nearby) ===\n%s" % "\n".join(relationship_lines))
 	if memory_lines.size() > 0:
 		user_parts.append("=== Relevant memories ===\n%s" % "\n".join(memory_lines))
-	if action_log.size() > 0:
-		user_parts.append("=== Recent actions ===\n%s" % "\n".join(action_log))
 	user_parts.append("=== Task ===\nChoose your next action for this tick.")
 	return [
 		{"role": "system", "content": system},
@@ -57,29 +77,138 @@ Respond ONLY via tool/function call — no free-form answer."""
 	]
 
 
-static func tool_definitions() -> Array:
+static func tool_definitions_for_context(
+	audio_agent_ids: PackedStringArray,
+	perception_agent_ids: PackedStringArray,
+	ground_item_ids: PackedStringArray,
+	pickup_item_ids: PackedStringArray,
+	inventory: Array,
+) -> Array:
 	var tools: Array = []
-	for kind in AgentActions.IMPLEMENTED_KINDS:
-		if not AgentActions.SCHEMAS.has(kind):
-			continue
-		var schema: Dictionary = AgentActions.SCHEMAS[kind]
-		var props: Dictionary = {}
-		for f in schema["required"]:
-			var t: int = schema["types"][f]
-			props[f] = {"type": "integer" if t == TYPE_INT else "string"}
-		if kind == AgentActions.KIND_SAY:
-			props["tone"] = {"type": "string", "description": "语气（简体中文），如：友好、好奇、平静"}
-			props["text"] = {"type": "string", "description": "对话内容，必须使用简体中文"}
-		tools.append({
-			"type": "function",
-			"function": {
-				"name": kind,
-				"description": schema["desc"],
-				"parameters": {
-					"type": "object",
-					"properties": props,
-					"required": schema["required"],
-				},
+	tools.append(_fn(
+		AgentActions.KIND_MOVE_TO,
+		AgentActions.SCHEMAS[AgentActions.KIND_MOVE_TO]["desc"],
+		{
+			"x": {"type": "integer", "description": "destination tile x"},
+			"y": {"type": "integer", "description": "destination tile y"},
+		},
+		["x", "y"],
+	))
+	var say_to: Array = ["broadcast"]
+	for id in audio_agent_ids:
+		say_to.append(id)
+	tools.append(_fn(
+		AgentActions.KIND_SAY,
+		"SAY to broadcast or an agent within audio range",
+		{
+			"to": {"type": "string", "enum": say_to},
+			"text": {"type": "string", "description": "简体中文对话内容"},
+			"tone": {"type": "string", "description": "语气，如：友好、平静"},
+		},
+		["to", "text"],
+	))
+	var observe_targets: Array = _merge_ids(perception_agent_ids, ground_item_ids)
+	if observe_targets.size() > 0:
+		tools.append(_fn(
+			AgentActions.KIND_OBSERVE,
+			"Observe a nearby agent or ground item id",
+			{
+				"target": {"type": "string", "enum": observe_targets},
 			},
-		})
+			["target"],
+		))
+	if pickup_item_ids.size() > 0:
+		tools.append(_fn(
+			AgentActions.KIND_PICK_UP,
+			"Pick up a ground item within 1 tile",
+			{
+				"item": {"type": "string", "enum": _array_from_packed(pickup_item_ids)},
+			},
+			["item"],
+		))
+	if inventory.size() > 0:
+		var inv_enum: Array = _array_from_packed(_unique_strings(inventory))
+		tools.append(_fn(
+			AgentActions.KIND_DROP,
+			"Drop an item from inventory",
+			{"item": {"type": "string", "enum": inv_enum}},
+			["item"],
+		))
+		var use_on: Array = ["self"]
+		for id in perception_agent_ids:
+			use_on.append(id)
+		for id in ground_item_ids:
+			use_on.append(id)
+		tools.append(_fn(
+			AgentActions.KIND_USE,
+			"Use an inventory item",
+			{
+				"item": {"type": "string", "enum": inv_enum},
+				"on": {"type": "string", "enum": use_on},
+			},
+			["item", "on"],
+		))
+		if audio_agent_ids.size() > 0:
+			tools.append(_fn(
+				AgentActions.KIND_GIVE,
+				"Give inventory item to agent within audio range",
+				{
+					"item": {"type": "string", "enum": inv_enum},
+					"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
+				},
+				["item", "to"],
+			))
 	return tools
+
+
+static func tool_definitions() -> Array:
+	return tool_definitions_for_context(
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		[],
+	)
+
+
+static func _fn(name: String, desc: String, props: Dictionary, required: Array) -> Dictionary:
+	return {
+		"type": "function",
+		"function": {
+			"name": name,
+			"description": desc,
+			"parameters": {
+				"type": "object",
+				"properties": props,
+				"required": required,
+			},
+		},
+	}
+
+
+static func _merge_ids(a: PackedStringArray, b: PackedStringArray) -> Array:
+	var out: Array = []
+	for id in a:
+		if not id in out:
+			out.append(id)
+	for id in b:
+		if not id in out:
+			out.append(id)
+	return out
+
+
+static func _array_from_packed(packed: PackedStringArray) -> Array:
+	var out: Array = []
+	for id in packed:
+		out.append(id)
+	return out
+
+
+static func _unique_strings(items: Array) -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	for item in items:
+		var s: String = str(item).strip_edges()
+		if s.is_empty() or s in out:
+			continue
+		out.append(s)
+	return out

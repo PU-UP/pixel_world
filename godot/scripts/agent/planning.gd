@@ -28,6 +28,7 @@ var _ticks_since_plan: int = 0
 var _busy: bool = false
 var _last_plan_text: String = ""
 var enabled: bool = true
+var _logger = null
 
 
 func setup(
@@ -51,6 +52,10 @@ func setup(
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
 		_clock.tick.connect(_on_tick)
+
+
+func set_logger(logger) -> void:
+	_logger = logger
 
 
 func get_remaining_steps() -> PackedStringArray:
@@ -116,6 +121,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	_ticks_since_plan = 0
 	var tick := int(meta.get("tick", _clock.current_tick()))
 	_memory.append_event("plan", text, tick, 0.2, 0.1, 0.5)
+	if _logger != null:
+		_logger.log_plan(_agent_id, tick, text, _steps)
 	plan_updated.emit(tick, _steps)
 
 

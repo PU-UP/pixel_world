@@ -100,6 +100,8 @@ const TICK_COST_BASE: Dictionary = {
 
 const MOVE_TICKS_PER_TILE: int = 1   # 每走 1 瓦片消耗 1 tick
 
+const AStarPathfinder = preload("res://scripts/world/pathfinding.gd")
+
 # ------------------------------------------------------------------
 # 校验
 # ------------------------------------------------------------------
@@ -132,6 +134,213 @@ static func validate(action: Dictionary) -> Dictionary:
 			else:
 				return {"ok": false, "error": "param '%s' type mismatch (want %d got %d)" % [f, expected, actual_type]}
 	return {"ok": true, "error": ""}
+
+
+## 结合世界状态的上下文校验 — 返回 {ok, error, hint}
+## hint: move_closer | unreachable
+static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictionary:
+	var base: Dictionary = validate(action)
+	if not base["ok"]:
+		return {"ok": false, "error": base["error"], "hint": ""}
+	var kind: String = action["kind"]
+	var params: Dictionary = action["params"]
+	match kind:
+		KIND_SAY:
+			var to_s: String = str(params.get("to", "")).strip_edges()
+			if to_s == "broadcast":
+				return {"ok": true, "error": "", "hint": ""}
+			if _looks_like_tick_id(to_s):
+				return {"ok": false, "error": "unknown agent: %s" % to_s, "hint": ""}
+			var audio_ids: Array = ctx.get("audio_agent_ids", [])
+			if _contains_id(audio_ids, to_s):
+				return {"ok": true, "error": "", "hint": ""}
+			var perception_ids: Array = ctx.get("perception_agent_ids", [])
+			if _contains_id(perception_ids, to_s):
+				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
+			var all_ids: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_ids, to_s):
+				return {
+					"ok": false,
+					"error": "agent not in range: %s" % to_s,
+					"hint": "approach_agent",
+					"approach_id": to_s,
+				}
+			return {"ok": false, "error": "unknown agent: %s" % to_s, "hint": ""}
+		KIND_OBSERVE:
+			var target: String = str(params.get("target", "")).strip_edges()
+			if target.is_empty():
+				return {"ok": false, "error": "empty observe target", "hint": ""}
+			var observe_agents: Array = ctx.get("perception_agent_ids", [])
+			var observe_items: Array = ctx.get("ground_item_ids", [])
+			if _contains_id(observe_agents, target) or _contains_id(observe_items, target):
+				return {"ok": true, "error": "", "hint": ""}
+			return {"ok": false, "error": "unknown/range target: %s" % target, "hint": ""}
+		KIND_MOVE_TO:
+			var world = ctx.get("world", null)
+			var start: Vector2i = ctx.get("agent_tile", Vector2i.ZERO)
+			var goal := Vector2i(int(params.get("x", 0)), int(params.get("y", 0)))
+			if world == null:
+				return {"ok": true, "error": "", "hint": ""}
+			var blocked: Array = ctx.get("blocked_move_tiles", [])
+			if _tile_key(goal) in blocked:
+				var snap_blocked: Dictionary = resolve_move_goal(world, start, goal)
+				if snap_blocked.get("ok", false):
+					return {
+						"ok": false,
+						"error": "blocked unwalkable (%d, %d)" % [goal.x, goal.y],
+						"hint": "snap_move",
+						"snap_tile": snap_blocked.get("tile", goal),
+					}
+			var resolved: Dictionary = resolve_move_goal(world, start, goal)
+			if resolved.get("ok", false):
+				var resolved_tile: Vector2i = resolved.get("tile", goal)
+				if resolved_tile == goal:
+					return {"ok": true, "error": "", "hint": ""}
+				return {
+					"ok": false,
+					"error": "unwalkable tile (%d, %d)" % [goal.x, goal.y],
+					"hint": "snap_move",
+					"snap_tile": resolved_tile,
+				}
+			return {"ok": false, "error": "path empty", "hint": "unreachable"}
+		KIND_PICK_UP:
+			var item_id: String = str(params.get("item", "")).strip_edges()
+			var pickup_ids: Array = ctx.get("pickup_item_ids", [])
+			if _contains_id(pickup_ids, item_id):
+				return {"ok": true, "error": "", "hint": ""}
+			return {"ok": false, "error": "item not in pickup range: %s" % item_id, "hint": ""}
+		KIND_GIVE:
+			var to_give: String = str(params.get("to", "")).strip_edges()
+			var item_g: String = str(params.get("item", "")).strip_edges()
+			if _looks_like_tick_id(to_give):
+				return {"ok": false, "error": "unknown agent: %s" % to_give, "hint": ""}
+			var audio_g: Array = ctx.get("audio_agent_ids", [])
+			if _contains_id(audio_g, to_give):
+				var inv: Array = ctx.get("inventory", [])
+				if not _contains_id(inv, item_g):
+					return {"ok": false, "error": "not carrying item: %s" % item_g, "hint": ""}
+				return {"ok": true, "error": "", "hint": ""}
+			var perception_g: Array = ctx.get("perception_agent_ids", [])
+			if _contains_id(perception_g, to_give):
+				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
+			var all_g: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_g, to_give):
+				return {
+					"ok": false,
+					"error": "agent not in range: %s" % to_give,
+					"hint": "approach_agent",
+					"approach_id": to_give,
+				}
+			return {"ok": false, "error": "unknown agent: %s" % to_give, "hint": ""}
+		KIND_DROP, KIND_USE:
+			var inv_d: Array = ctx.get("inventory", [])
+			var need_item: String = str(params.get("item", "")).strip_edges()
+			if not _contains_id(inv_d, need_item):
+				return {"ok": false, "error": "not carrying item: %s" % need_item, "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
+		_:
+			return {"ok": true, "error": "", "hint": ""}
+
+
+static func build_context(player: Player, comm, world) -> Dictionary:
+	var perception_ids: PackedStringArray = PackedStringArray()
+	var audio_ids: PackedStringArray = PackedStringArray()
+	var ground_item_ids: PackedStringArray = PackedStringArray()
+	var pickup_item_ids: PackedStringArray = PackedStringArray()
+	var agent_tile: Vector2i = player.get_tile_position()
+	var all_agent_ids: PackedStringArray = PackedStringArray()
+	if comm != null:
+		for p in comm.players_in_perception(player):
+			perception_ids.append(str(p.agent_id))
+		for p in comm.players_in_audio(player):
+			audio_ids.append(str(p.agent_id))
+		for p in comm.all_players():
+			if p != player:
+				all_agent_ids.append(str(p.agent_id))
+	if world != null and world.state != null:
+		var obs_r: int = player.observation_radius_tiles
+		var pick_r: int = Config.world_item_pickup_radius()
+		for item in world.state.items_near(agent_tile, obs_r + 1):
+			var iid: String = str(item.get("item_id", ""))
+			if not iid.is_empty():
+				ground_item_ids.append(iid)
+		for item in world.state.items_near(agent_tile, pick_r):
+			var pid: String = str(item.get("item_id", ""))
+			if not pid.is_empty():
+				pickup_item_ids.append(pid)
+	return {
+		"perception_agent_ids": perception_ids,
+		"audio_agent_ids": audio_ids,
+		"all_agent_ids": all_agent_ids,
+		"ground_item_ids": ground_item_ids,
+		"pickup_item_ids": pickup_item_ids,
+		"inventory": player.inventory.duplicate(),
+		"agent_tile": agent_tile,
+		"world": world,
+		"blocked_move_tiles": [],
+	}
+
+
+## 将 MOVE_TO 目标修正为可达的最近可走格（山地/水域旁自动吸附）
+static func resolve_move_goal(world, start: Vector2i, goal: Vector2i) -> Dictionary:
+	if world == null:
+		return {"ok": false}
+	if world.is_walkable_tile(goal):
+		var direct: Array = AStarPathfinder.find_path(world, start, goal)
+		if not direct.is_empty():
+			return {"ok": true, "tile": goal, "snapped": false}
+	var best: Vector2i = Vector2i(-1, -1)
+	var best_ring: int = 9999
+	for ring in range(1, 7):
+		for dx in range(-ring, ring + 1):
+			for dy in range(-ring, ring + 1):
+				if maxi(abs(dx), abs(dy)) != ring:
+					continue
+				var t: Vector2i = goal + Vector2i(dx, dy)
+				if not world.is_walkable_tile(t):
+					continue
+				var path: Array = AStarPathfinder.find_path(world, start, t)
+				if path.is_empty():
+					continue
+				if ring < best_ring:
+					best_ring = ring
+					best = t
+		if best != Vector2i(-1, -1):
+			return {"ok": true, "tile": best, "snapped": true, "from": goal}
+	return {"ok": false}
+
+
+static func nearby_walkable_tiles(world, center: Vector2i, radius: int = 2) -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	if world == null:
+		return out
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var t: Vector2i = center + Vector2i(dx, dy)
+			if world.is_walkable_tile(t):
+				out.append("(%d,%d)" % [t.x, t.y])
+	return out
+
+
+static func _tile_key(tile: Vector2i) -> String:
+	return "%d,%d" % [tile.x, tile.y]
+
+
+static func _contains_id(ids: Array, id: String) -> bool:
+	var key := id.strip_edges()
+	if key.is_empty():
+		return false
+	for entry in ids:
+		if str(entry).strip_edges() == key:
+			return true
+	return false
+
+
+static func _looks_like_tick_id(s: String) -> bool:
+	if s.length() < 2:
+		return false
+	return s[0].to_lower() == "t" and s.substr(1).is_valid_int()
+
 
 ## 计算一个 action 的总 tick 消耗
 static func tick_cost(action: Dictionary, path_length: int = 1) -> int:

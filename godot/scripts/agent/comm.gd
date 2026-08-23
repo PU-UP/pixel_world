@@ -54,7 +54,7 @@ func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: 
 	for p in recipients:
 		recipient_ids.append(str(p.agent_id))
 	message_delivered.emit(str(speaker.agent_id), target, text, tick, recipient_ids)
-	return {"ok": true, "error": "", "recipients": recipients.size()}
+	return {"ok": true, "error": "", "recipients": recipients.size(), "recipient_ids": recipient_ids}
 
 
 func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int) -> Dictionary:
@@ -73,6 +73,36 @@ func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int
 	receiver.receive_item(str(giver.agent_id), item, tick)
 	item_given.emit(str(giver.agent_id), target, item, tick)
 	return {"ok": true, "error": ""}
+
+
+func players_in_audio(observer: Player) -> Array:
+	var out: Array = []
+	for p in _players:
+		if p != observer and _can_hear(observer, p):
+			out.append(p)
+	return out
+
+
+func find_player(agent_id: String) -> Player:
+	return _find_player(agent_id.strip_edges())
+
+
+func resolve_agent_id(alias: String) -> String:
+	var key := alias.strip_edges().to_lower()
+	if key.is_empty() or key == "broadcast":
+		return alias.strip_edges()
+	var exact: Array = []
+	var prefix: Array = []
+	for p in _players:
+		var id: String = str(p.agent_id)
+		var low := id.to_lower()
+		if low == key:
+			return id
+		if key.length() >= 3 and low.begins_with(key):
+			prefix.append(id)
+	if prefix.size() == 1:
+		return str(prefix[0])
+	return alias.strip_edges()
 
 
 func _find_player(agent_id: String) -> Player:

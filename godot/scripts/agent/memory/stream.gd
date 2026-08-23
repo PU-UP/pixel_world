@@ -87,13 +87,19 @@ func maybe_decay(current_tick: int) -> void:
 
 
 func format_for_hud(limit: int, agent_label: String = "") -> String:
-	var recent := get_recent(limit)
+	var hud_cfg: Dictionary = Config.memory_cfg().get("hud", {})
+	var allowed: Array = hud_cfg.get("categories", ["action", "action_failed", "reflection", "plan"])
+	var scan: int = mini(limit * 5, _store.count())
+	var recent := get_recent(scan)
 	if recent.is_empty():
 		return "  （空）"
 	var prefix := "%s " % agent_label if not agent_label.is_empty() else ""
 	var lines: PackedStringArray = []
 	for mem in recent:
-		var cat: String = _category_zh(str(mem.get("category", "?")))
+		var cat: String = str(mem.get("category", "?"))
+		if not cat in allowed:
+			continue
+		var cat_zh: String = _category_zh(cat)
 		var body: String = str(mem.get("text", ""))
 		if body.length() > 100:
 			body = body.substr(0, 99) + "…"
@@ -101,11 +107,15 @@ func format_for_hud(limit: int, agent_label: String = "") -> String:
 			"  %st%-4d  %-4s  %.2f  %s" % [
 				prefix,
 				int(mem.get("tick", -1)),
-				cat,
+				cat_zh,
 				float(mem.get("importance", 0.0)),
 				body,
 			]
 		)
+	if lines.is_empty():
+		return "  （空）"
+	if lines.size() > limit:
+		return "\n".join(lines.slice(lines.size() - limit, lines.size()))
 	return "\n".join(lines)
 
 
@@ -114,6 +124,7 @@ static func _category_zh(category: String) -> String:
 		"decision": return "决策"
 		"observation": return "观察"
 		"action": return "行动"
+		"action_failed": return "失败"
 		"plan": return "计划"
 		"reflection": return "反思"
 		_: return category

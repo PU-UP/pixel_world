@@ -29,11 +29,17 @@ const TILE_SIZE: int = GameWorld.TILE_SIZE
 var _world = null       # GameWorld
 var _clock = null       # GameClock
 var _comm = null        # CommRouter
+var _obs_logger = null  # ObservabilityLogger
 var _last_dir: Vector2 = Vector2.DOWN
 var _last_position: Vector2 = Vector2.ZERO
 var _last_observation_tick: int = -1
 var _observation_text: String = "（尚无观察）"
 var _heard_messages: Array = []
+var _pending_reply_from: String = ""
+var _pending_reply_text: String = ""
+var _pending_reply_tick: int = -1
+var _last_say_text: String = ""
+var _last_say_tick: int = -1
 var inventory: Array = []
 var action_log: Array = []
 
@@ -146,12 +152,24 @@ func bind_world(world) -> void:
 	if is_inside_tree():
 		_relocate_spawn()
 
+
+func game_world() -> GameWorld:
+	return _world
+
 func bind_clock(clock) -> void:
 	_clock = clock
 
 
 func bind_comm(comm) -> void:
 	_comm = comm
+
+
+func bind_observability(logger) -> void:
+	_obs_logger = logger
+
+
+func queued_action_count() -> int:
+	return _action_queue.size()
 
 # ------------------------------------------------------------------
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
@@ -160,11 +178,13 @@ func enqueue_action(action: Dictionary) -> void:
 	var v: Dictionary = AgentActions.validate(action)
 	if not v["ok"]:
 		_log_action(_clock.current_tick() if _clock else -1, "reject", "invalid: %s" % v["error"])
+		_log_obs_action(str(action.get("kind", "?")), action.get("params", {}), false, v["error"], v["error"])
 		printerr("[Player] reject action: ", v["error"], " action=", action)
 		return
 	# 已实现校验
 	if action["kind"] not in AgentActions.IMPLEMENTED_KINDS:
 		_log_action(_clock.current_tick() if _clock else -1, "reject", "unimplemented: %s" % action["kind"])
+		_log_obs_action(action["kind"], action.get("params", {}), false, "unimplemented", action["kind"])
 		printerr("[Player] kind not implemented in P2: ", action["kind"])
 		return
 	_action_queue.append(action)
@@ -263,11 +283,13 @@ func _start_move_to(gx: int, gy: int) -> void:
 	if start_tile == goal_tile:
 		# 已经在, 直接完成
 		_log_action(_clock.current_tick() if _clock else -1, "move", "already at (%d, %d)" % [gx, gy])
+		_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": gx, "y": gy}, true, "already at target")
 		_pump_next_action()
 		return
 	var path: Array = AStarPathfinder.find_path(_world, start_tile, goal_tile)
 	if path.is_empty():
 		_log_action(_clock.current_tick() if _clock else -1, "move", "UNREACHABLE (%d, %d)" % [gx, gy])
+		_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": gx, "y": gy}, false, "unreachable", "path empty")
 		_pump_next_action()
 		return
 	# path 是 Vector2i 数组, 转像素路径
@@ -277,6 +299,7 @@ func _start_move_to(gx: int, gy: int) -> void:
 	_path_idx = 0
 	_state = State.WALKING
 	_log_action(_clock.current_tick() if _clock else -1, "move", "→ (%d, %d)  path_len=%d" % [gx, gy, path.size()])
+	_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": gx, "y": gy}, true, "path_len=%d" % path.size())
 
 func _execute_say(action: Dictionary) -> void:
 	var p: Dictionary = action["params"]
@@ -286,12 +309,19 @@ func _execute_say(action: Dictionary) -> void:
 	var tone_s: String = str(p.get("tone", "neutral"))
 	if _comm == null:
 		_log_action(tick, "say", "FAILED no comm router")
+		_log_obs_action(AgentActions.KIND_SAY, p, false, "no comm router")
 	else:
 		var res: Dictionary = _comm.deliver_say(self, to_s, text_s, tone_s, tick)
 		if res.get("ok", false):
 			_log_action(tick, "say", "→ %s: %s" % [to_s, text_s])
+			record_successful_say(to_s, text_s, tick)
+			_log_obs_say(to_s, text_s, tone_s, tick, res.get("recipient_ids", []), true)
+			_log_obs_action(AgentActions.KIND_SAY, p, true, "→ %s: %s" % [to_s, text_s])
 		else:
-			_log_action(tick, "say", "FAILED %s" % str(res.get("error", "?")))
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "say", "FAILED %s" % err)
+			_log_obs_say(to_s, text_s, tone_s, tick, [], false, err)
+			_log_obs_action(AgentActions.KIND_SAY, p, false, err, err)
 	_pump_next_action()
 
 
@@ -301,13 +331,17 @@ func _execute_pick_up(action: Dictionary) -> void:
 	var tick: int = _clock.current_tick() if _clock else -1
 	if _world == null or _world.state == null:
 		_log_action(tick, "pickup", "FAILED no world state")
+		_log_obs_action(AgentActions.KIND_PICK_UP, p, false, "no world state")
 	else:
 		var res: Dictionary = _world.state.try_pick_up(get_tile_position(), item_id)
 		if res.get("ok", false):
 			inventory.append(str(res.get("item_id", item_id)))
 			_log_action(tick, "pickup", "got %s" % res.get("item_id", item_id))
+			_log_obs_action(AgentActions.KIND_PICK_UP, p, true, "got %s" % res.get("item_id", item_id))
 		else:
-			_log_action(tick, "pickup", "FAILED %s" % str(res.get("error", "?")))
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "pickup", "FAILED %s" % err)
+			_log_obs_action(AgentActions.KIND_PICK_UP, p, false, err, err)
 	_pump_next_action()
 
 
@@ -317,16 +351,21 @@ func _execute_drop(action: Dictionary) -> void:
 	var tick: int = _clock.current_tick() if _clock else -1
 	if not inventory.has(item_id):
 		_log_action(tick, "drop", "FAILED not carrying %s" % item_id)
+		_log_obs_action(AgentActions.KIND_DROP, p, false, "not carrying", item_id)
 	elif _world == null or _world.state == null:
 		_log_action(tick, "drop", "FAILED no world state")
+		_log_obs_action(AgentActions.KIND_DROP, p, false, "no world state")
 	else:
 		inventory.erase(item_id)
 		var res: Dictionary = _world.state.try_drop(get_tile_position(), item_id)
 		if res.get("ok", false):
 			_log_action(tick, "drop", "dropped %s" % item_id)
+			_log_obs_action(AgentActions.KIND_DROP, p, true, "dropped %s" % item_id)
 		else:
 			inventory.append(item_id)
-			_log_action(tick, "drop", "FAILED %s" % str(res.get("error", "?")))
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "drop", "FAILED %s" % err)
+			_log_obs_action(AgentActions.KIND_DROP, p, false, err, err)
 	_pump_next_action()
 
 
@@ -354,8 +393,10 @@ func _execute_observe(action: Dictionary) -> void:
 			]
 	if detail.is_empty():
 		_log_action(tick, "observe", "FAILED unknown/range %s" % target)
+		_log_obs_action(AgentActions.KIND_OBSERVE, p, false, "unknown/range", target)
 	else:
 		_log_action(tick, "observe", detail.substr(0, 72))
+		_log_obs_action(AgentActions.KIND_OBSERVE, p, true, detail.substr(0, 120))
 	_pump_next_action()
 
 
@@ -366,10 +407,13 @@ func _execute_use(action: Dictionary) -> void:
 	var tick: int = _clock.current_tick() if _clock else -1
 	if item_id.is_empty():
 		_log_action(tick, "use", "FAILED empty item")
+		_log_obs_action(AgentActions.KIND_USE, p, false, "empty item")
 	elif not inventory.has(item_id):
 		_log_action(tick, "use", "FAILED not carrying %s" % item_id)
+		_log_obs_action(AgentActions.KIND_USE, p, false, "not carrying", item_id)
 	elif not _use_target_valid(on_target):
 		_log_action(tick, "use", "FAILED target out of range: %s" % on_target)
+		_log_obs_action(AgentActions.KIND_USE, p, false, "target out of range", on_target)
 	else:
 		var defs: Dictionary = Config.world_item_defs()
 		var def: Dictionary = defs.get(item_id, {})
@@ -379,6 +423,7 @@ func _execute_use(action: Dictionary) -> void:
 		if bool(def.get("consumable", false)):
 			inventory.erase(item_id)
 		_log_action(tick, "use", text)
+		_log_obs_action(AgentActions.KIND_USE, p, true, text)
 	_pump_next_action()
 
 
@@ -389,14 +434,19 @@ func _execute_give(action: Dictionary) -> void:
 	var tick: int = _clock.current_tick() if _clock else -1
 	if _comm == null:
 		_log_action(tick, "give", "FAILED no comm router")
+		_log_obs_action(AgentActions.KIND_GIVE, p, false, "no comm router")
 	elif item_id.is_empty() or to_id.is_empty():
 		_log_action(tick, "give", "FAILED empty item or target")
+		_log_obs_action(AgentActions.KIND_GIVE, p, false, "empty item or target")
 	else:
 		var res: Dictionary = _comm.deliver_give(self, to_id, item_id, tick)
 		if res.get("ok", false):
 			_log_action(tick, "give", "→ %s: %s" % [to_id, item_id])
+			_log_obs_action(AgentActions.KIND_GIVE, p, true, "→ %s: %s" % [to_id, item_id])
 		else:
-			_log_action(tick, "give", "FAILED %s" % str(res.get("error", "?")))
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "give", "FAILED %s" % err)
+			_log_obs_action(AgentActions.KIND_GIVE, p, false, err, err)
 	_pump_next_action()
 
 
@@ -420,6 +470,9 @@ func receive_say(from_id: String, text: String, _tone: String, tick: int) -> voi
 	_heard_messages.append({"from": from_id, "text": text, "tick": tick})
 	if _heard_messages.size() > 6:
 		_heard_messages.pop_front()
+	_pending_reply_from = from_id
+	_pending_reply_text = text
+	_pending_reply_tick = tick
 	_log_action(tick, "heard", "%s: %s" % [from_id, text])
 
 
@@ -531,11 +584,84 @@ func _log_action(tick: int, kind: String, text: String) -> void:
 	if action_log.size() > action_log_max:
 		action_log.pop_front()
 
+
+func _log_obs_action(
+	kind: String,
+	params: Dictionary,
+	ok: bool,
+	detail: String,
+	error: String = "",
+) -> void:
+	if _obs_logger == null:
+		return
+	var tick: int = _clock.current_tick() if _clock else -1
+	_obs_logger.log_action_result(str(agent_id), tick, kind, params, ok, detail, error)
+
+
+func _log_obs_say(
+	target_id: String,
+	text: String,
+	tone: String,
+	tick: int,
+	recipient_ids: Array,
+	ok: bool,
+	error: String = "",
+) -> void:
+	if _obs_logger == null:
+		return
+	_obs_logger.log_say(str(agent_id), target_id, text, tick, recipient_ids, ok, error, tone)
+
 # ------------------------------------------------------------------
 # HUD 接口
 # ------------------------------------------------------------------
 func get_observation() -> String:
 	return _observation_text
+
+
+func get_observation_for_llm() -> String:
+	var text := _observation_text
+	var idx: int = text.find("| 听到:")
+	if idx >= 0:
+		return text.substr(0, idx).strip_edges()
+	return text
+
+
+func get_pending_reply_from() -> String:
+	return _pending_reply_from
+
+
+func get_pending_reply_line() -> String:
+	if _pending_reply_from.is_empty():
+		return ""
+	return "t%d %s说: %s" % [_pending_reply_tick, _pending_reply_from, _pending_reply_text]
+
+
+func get_last_say_text() -> String:
+	return _last_say_text
+
+
+func would_repeat_say(text: String) -> bool:
+	var normalized := text.strip_edges()
+	if normalized.is_empty() or normalized != _last_say_text:
+		return false
+	var window: int = Config.decision_repeat_say_block_ticks()
+	if _clock == null or window <= 0:
+		return true
+	return _clock.current_tick() - _last_say_tick <= window
+
+
+func record_successful_say(to: String, text: String, tick: int) -> void:
+	_last_say_text = text.strip_edges()
+	_last_say_tick = tick
+	var target := to.strip_edges()
+	if target != "broadcast" and target == _pending_reply_from:
+		_clear_pending_reply()
+
+
+func _clear_pending_reply() -> void:
+	_pending_reply_from = ""
+	_pending_reply_text = ""
+	_pending_reply_tick = -1
 
 func get_action_log_lines(limit: int = 4) -> PackedStringArray:
 	var n: int = mini(limit, action_log.size())

@@ -16,6 +16,7 @@ var _clock: GameClock = null
 var _llm: LlmClientScript = null
 var _persona: PersonaScript = null
 var _agent_id: String = ""
+var _logger = null
 
 var _busy: bool = false
 var _last_reflection: String = ""
@@ -41,6 +42,10 @@ func setup(
 		_clock.tick.connect(_on_tick)
 	if not _memory.memory_added.is_connected(_on_memory_added):
 		_memory.memory_added.connect(_on_memory_added)
+
+
+func set_logger(logger) -> void:
+	_logger = logger
 
 
 func get_last_reflection_text() -> String:
@@ -102,6 +107,8 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	_ticks_since_reflection = 0
 	var social_n := _count_social_memories()
 	_persona.apply_reflection_drift(social_n)
+	if _logger != null:
+		_logger.log_reflection(_agent_id, int(meta.get("tick", -1)), text)
 	reflection_done.emit(int(meta.get("tick", -1)), text)
 
 

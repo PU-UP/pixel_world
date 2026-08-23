@@ -2,7 +2,7 @@ tick:
   hz: 2.0
 
 llm:
-  concurrency: 4
+  concurrency: 3
 
 agent:
   perception_radius: 6
@@ -17,14 +17,16 @@ control:
 
 decision:
   skip_while_walking: true
+  repeat_say_block_ticks: 40
+  min_ticks_between: 2
 
 memory:
   importance_threshold_for_permanent: 0.7
   decay_interval_ticks: 50
   decay_amount: 0.02
   reflection:
-    trigger_events: 10
-    trigger_ticks: 100
+    trigger_events: 20
+    trigger_ticks: 200
     lookback: 50
   retrieval:
     top_k: 8
@@ -32,11 +34,19 @@ memory:
     recency_weight: 0.3
     similarity_weight: 0.7
     importance_weight: 0.2
+    exclude_categories:
+      - observation
+      - decision
   hud:
     display_limit: 50
+    categories:
+      - action
+      - action_failed
+      - reflection
+      - plan
 
 planning:
-  trigger_ticks: 50
+  trigger_ticks: 80
   max_steps: 7
 
 relationships:
@@ -63,3 +73,8 @@ relationships:
 persona_drift:
   max_per_trait: 0.15
   reflection_jitter: 0.02
+
+observability:
+  snapshot_interval_ticks: 25
+  stuck_tile_threshold: 3
+  repeat_say_window_ticks: 40

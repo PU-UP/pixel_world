@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Summarize data/logs + memory + relationships for maintenance."""
+"""Summarize data/logs + memory + relationships for maintenance.
+
+For a full narrative digest (external agent review), run:
+  python tools/digest_session.py
+"""
 import json
 import glob
 import os
+import subprocess
+import sys
 from collections import defaultdict
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -149,6 +155,19 @@ if __name__ == "__main__":
         summary = latest_summary_for(path)
         if summary:
             print_summary_file(summary)
+            anomalies = summary.get("anomalies", [])
+            if anomalies:
+                print("=== Runtime anomalies ===")
+                for a in anomalies:
+                    print(
+                        f"  t{a.get('tick')} [{a.get('kind')}] "
+                        f"{a.get('agent_id')}: {a.get('detail')}"
+                    )
+                print()
         summarize_log(path)
     summarize_memory()
     summarize_relationships()
+    digest_tool = os.path.join(os.path.dirname(__file__), "digest_session.py")
+    if path and os.path.isfile(digest_tool):
+        print("=== Generating digest ===")
+        subprocess.run([sys.executable, digest_tool, path], check=False)

@@ -14,6 +14,7 @@ static func build_messages(
 	var system := """You are an autonomous agent planning the next stretch of activity on a 2D pixel island.
 Write a numbered list of 5-7 short steps you intend to follow, in Simplified Chinese (简体中文).
 Steps may reference action primitives by English name: MOVE_TO (tile x,y), SAY (to agent_id or broadcast), PICK_UP, DROP, USE, GIVE, OBSERVE.
+MOVE_TO coordinates must be walkable tiles — not water, trees, or mountains.
 Example step: "1. MOVE_TO 前往沙滩 (32,50)，向 scout 用 SAY 打招呼"
 Prefer social steps (SAY) when you know familiar agents nearby.
 One step per line, format: "1. ..." """
