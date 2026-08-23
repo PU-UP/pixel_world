@@ -33,6 +33,8 @@ P8 观测与决策硬化：日志 digest、action gate、MOVE 吸附、token 节
 
 未实现：`EMOTE` / `SLEEP` / `WAIT`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
 
+**v2.0 验收**：[docs/v2.0-acceptance.md](./docs/v2.0-acceptance.md) · **协作者交接**：[docs/agent-handoff.md](./docs/agent-handoff.md)
+
 ## 运行
 
 **依赖**：Godot **4.7.x**（`.godot-version`）、MiniMax API Key（仅 Agent 模式）

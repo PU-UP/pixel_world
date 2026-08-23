@@ -130,10 +130,6 @@ func _set_control_mode(mode: int) -> void:
 
 
 func _control_mode_label() -> String:
-	return "自主" if _control_mode == ControlMode.AGENT else "手动"
-
-
-func _control_mode_label() -> String:
 	var mode := "自主" if _control_mode == ControlMode.AGENT else "手动"
 	if _god_view:
 		return "%s·上帝" % mode
