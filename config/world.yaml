@@ -1,7 +1,7 @@
 world:
   tile_size: 16
-  map_width: 64
-  map_height: 64
+  map_width: 96
+  map_height: 96
   seed: 1337
   item_pickup_radius: 1
 
@@ -35,41 +35,41 @@ items:
 
 ground_items:
   - item: driftwood
-    tile: [30, 48]
+    tile: [45, 72]
   - item: seashell
-    tile: [28, 50]
+    tile: [42, 75]
   - item: seashell
-    tile: [35, 49]
+    tile: [52, 73]
   - item: berry_bush
-    tile: [22, 38]
+    tile: [33, 57]
   - item: berry_bush
-    tile: [40, 36]
+    tile: [60, 54]
   - item: flint
-    tile: [32, 28]
+    tile: [48, 42]
   - item: rope
-    tile: [44, 40]
+    tile: [66, 60]
 
 regions:
   - id: south_beach
     name: "南滩"
-    center: [32, 50]
-    radius: 10
+    center: [48, 75]
+    radius: 15
   - id: central_meadow
     name: "中央草甸"
-    center: [32, 32]
-    radius: 14
+    center: [48, 48]
+    radius: 21
   - id: north_ridge
     name: "北脊"
-    center: [32, 18]
-    radius: 10
+    center: [48, 27]
+    radius: 15
   - id: east_shore
     name: "东岸"
-    center: [48, 34]
-    radius: 8
+    center: [72, 51]
+    radius: 12
   - id: west_grove
     name: "西林"
-    center: [18, 34]
-    radius: 8
+    center: [27, 51]
+    radius: 12
 
 events:
   - id: seabirds

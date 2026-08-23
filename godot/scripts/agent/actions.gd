@@ -17,12 +17,13 @@ const KIND_PICK_UP   := "PICK_UP"
 const KIND_DROP      := "DROP"
 const KIND_USE       := "USE"
 const KIND_GIVE      := "GIVE"
+const KIND_SHARE_MAP := "SHARE_MAP"
 const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
 # P2: MOVE_TO | P5: SAY | P7: PICK_UP, DROP, OBSERVE
 const IMPLEMENTED_KINDS: Array[String] = [
-	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE,
+	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP,
 ]
 
 # ------------------------------------------------------------------
@@ -70,6 +71,11 @@ const SCHEMAS: Dictionary = {
 		"types":    {"item": TYPE_STRING, "to": TYPE_STRING},
 		"desc":     "Give an item to another agent",
 	},
+	KIND_SHARE_MAP: {
+		"required": ["to"],
+		"types":    {"to": TYPE_STRING},
+		"desc":     "Offer to share explored map with another agent (mutual SHARE_MAP merges gray areas)",
+	},
 	KIND_SLEEP: {
 		"required": ["until_tick"],
 		"types":    {"until_tick": TYPE_INT},
@@ -94,6 +100,7 @@ const TICK_COST_BASE: Dictionary = {
 	KIND_DROP:     0,
 	KIND_USE:      1,
 	KIND_GIVE:     1,
+	KIND_SHARE_MAP: 1,
 	KIND_SLEEP:    0,    # 实际 = until_tick - now
 	KIND_WAIT:     0,    # 实际 = ticks
 }
@@ -174,6 +181,14 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var observe_items: Array = ctx.get("ground_item_ids", [])
 			if _contains_id(observe_agents, target) or _contains_id(observe_items, target):
 				return {"ok": true, "error": "", "hint": ""}
+			var all_obs: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_obs, target):
+				return {
+					"ok": false,
+					"error": "agent not in range: %s" % target,
+					"hint": "approach_agent",
+					"approach_id": target,
+				}
 			return {"ok": false, "error": "unknown/range target: %s" % target, "hint": ""}
 		KIND_MOVE_TO:
 			var world = ctx.get("world", null)
@@ -181,6 +196,8 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var goal := Vector2i(int(params.get("x", 0)), int(params.get("y", 0)))
 			if world == null:
 				return {"ok": true, "error": "", "hint": ""}
+			if goal == start:
+				return {"ok": false, "error": "already at target", "hint": "already_there"}
 			var blocked: Array = ctx.get("blocked_move_tiles", [])
 			if _tile_key(goal) in blocked:
 				var snap_blocked: Dictionary = resolve_move_goal(world, start, goal)
@@ -232,6 +249,25 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 					"approach_id": to_give,
 				}
 			return {"ok": false, "error": "unknown agent: %s" % to_give, "hint": ""}
+		KIND_SHARE_MAP:
+			var to_share: String = str(params.get("to", "")).strip_edges()
+			if _looks_like_tick_id(to_share):
+				return {"ok": false, "error": "unknown agent: %s" % to_share, "hint": ""}
+			var audio_s: Array = ctx.get("audio_agent_ids", [])
+			if _contains_id(audio_s, to_share):
+				return {"ok": true, "error": "", "hint": ""}
+			var perception_s: Array = ctx.get("perception_agent_ids", [])
+			if _contains_id(perception_s, to_share):
+				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
+			var all_s: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_s, to_share):
+				return {
+					"ok": false,
+					"error": "agent not in range: %s" % to_share,
+					"hint": "approach_agent",
+					"approach_id": to_share,
+				}
+			return {"ok": false, "error": "unknown agent: %s" % to_share, "hint": ""}
 		KIND_DROP, KIND_USE:
 			var inv_d: Array = ctx.get("inventory", [])
 			var need_item: String = str(params.get("item", "")).strip_edges()
@@ -358,6 +394,11 @@ static func tick_cost(action: Dictionary, path_length: int = 1) -> int:
 ## 工厂: 生成 MOVE_TO action
 static func make_move_to(x: int, y: int) -> Dictionary:
 	return {"kind": KIND_MOVE_TO, "params": {"x": x, "y": y}}
+
+
+static func make_share_map(to_agent_id: String) -> Dictionary:
+	return {"kind": KIND_SHARE_MAP, "params": {"to": to_agent_id}}
+
 
 ## 调试: action -> 字符串 (勿命名为 to_string, 会与 Object 内置方法冲突)
 static func format_action(action: Dictionary) -> String:

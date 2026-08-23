@@ -13,6 +13,7 @@ const CoordinatorScript = preload("res://scripts/agent/coordinator.gd")
 const DecisionScript = preload("res://scripts/agent/decision.gd")
 const MinimapScript = preload("res://scripts/ui/minimap.gd")
 const CameraRigScript = preload("res://scripts/ui/camera_rig.gd")
+const FogOfWarScript = preload("res://scripts/ui/fog_of_war.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
@@ -49,6 +50,8 @@ var _relation_visible: bool = false
 var _minimap_visible: bool = false
 var _control_mode: int = ControlMode.MANUAL
 var _observe_details_visible: bool = true
+var _god_view: bool = false
+var _fog: FogOfWarLayer = null
 
 
 func _ready() -> void:
@@ -66,6 +69,12 @@ func _ready() -> void:
 		_world.events.event_fired.connect(_on_world_event)
 	_coordinator.roster_changed.connect(_on_roster_changed)
 	_connect_decision_signals()
+	_fog = FogOfWarScript.new()
+	_fog.name = "FogOfWar"
+	add_child(_fog)
+	move_child(_fog, _agents_root.get_index())
+	_fog.setup(_world)
+	_camera.set_world_center(_world.world_size() * 0.5)
 	_set_control_mode(_control_mode_from_config())
 	_hud_status.gui_input.connect(_on_status_label_gui_input)
 	_apply_observe_details_visibility()
@@ -98,6 +107,7 @@ func _on_roster_changed() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_view_mode()
 	var agent := _current_agent()
 	_camera.set_follow_target(agent)
 	_camera.apply_follow()
@@ -121,6 +131,32 @@ func _set_control_mode(mode: int) -> void:
 
 func _control_mode_label() -> String:
 	return "自主" if _control_mode == ControlMode.AGENT else "手动"
+
+
+func _control_mode_label() -> String:
+	var mode := "自主" if _control_mode == ControlMode.AGENT else "手动"
+	if _god_view:
+		return "%s·上帝" % mode
+	return mode
+
+
+func _update_view_mode() -> void:
+	if _fog == null:
+		return
+	if _god_view:
+		_fog.set_god_mode(true)
+		_camera.set_view_mode(CameraRigScript.ViewMode.GOD_MAP)
+	else:
+		_fog.set_god_mode(false)
+		_camera.set_view_mode(CameraRigScript.ViewMode.FOLLOW_AGENT)
+		var agent := _current_agent()
+		if agent != null:
+			_fog.set_exploration(agent.exploration)
+	_minimap.set_god_mode(_god_view)
+	if not _god_view:
+		var sel := _current_agent()
+		if sel != null:
+			_minimap.set_exploration(sel.exploration)
 
 
 func _selected_record() -> Dictionary:
@@ -218,10 +254,14 @@ func _update_relation_hud() -> void:
 	var agent_label := str(player.agent_id)
 	_hud_relation_title.text = "关系 — %s（%s）  F5关闭" % [persona.display_name, agent_label]
 	var plan_steps: PackedStringArray = rec["planning"].get_remaining_steps()
+	var goal_text: String = rec["goals"].format_for_prompt() if rec.has("goals") else ""
+	var plan_header := ""
+	if not goal_text.is_empty():
+		plan_header = goal_text + "\n\n"
 	if plan_steps.is_empty():
-		_hud_plan.text = _truncate(rec["planning"].get_last_plan_text(), 200)
+		_hud_plan.text = _truncate(plan_header + rec["planning"].get_last_plan_text(), 220)
 	else:
-		_hud_plan.text = _truncate("\n".join(plan_steps), 200)
+		_hud_plan.text = _truncate(plan_header + "\n".join(plan_steps), 220)
 	var rel_text: String = rec["relationships"].format_for_hud(_coordinator.all_agent_ids())
 	var network: String = rec["relationships"].format_network_ascii(_coordinator.all_agent_ids())
 	_hud_relations.text = "%s\n\n%s" % [network, rel_text]
@@ -311,6 +351,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 	elif event.is_action_pressed("reset_world"):
 		_reset_world()
+	elif event.is_action_pressed("toggle_god_view"):
+		_god_view = not _god_view
+		_camera.reset_view()
+		if _god_view:
+			_camera.fit_world(_world.world_size())
+		_update_view_mode()
 	elif event.is_action_pressed("toggle_pause"):
 		_clock.paused = not _clock.paused
 	elif event.is_action_pressed("step_tick"):
@@ -360,3 +406,5 @@ func _reset_world() -> void:
 		_update_relation_hud()
 	_refresh_minimap()
 	_camera.reset_view()
+	_god_view = false
+	_update_view_mode()

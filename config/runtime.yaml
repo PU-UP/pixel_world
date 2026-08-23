@@ -19,6 +19,10 @@ decision:
   skip_while_walking: true
   repeat_say_block_ticks: 40
   min_ticks_between: 2
+  max_say_chars: 180
+
+exploration:
+  share_consensus_ticks: 60
 
 memory:
   importance_threshold_for_permanent: 0.7

@@ -7,6 +7,7 @@ class_name SessionReset
 static func wipe_persisted_agent_data() -> void:
 	_clear_dir_files(Config.repo_root().path_join("data/memory"))
 	_clear_dir_files(Config.repo_root().path_join("data/relationships"))
+	_clear_dir_files(Config.repo_root().path_join("data/goals"))
 
 
 static func _clear_dir_files(dir_path: String) -> void:

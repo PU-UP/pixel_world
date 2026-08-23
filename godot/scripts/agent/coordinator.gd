@@ -14,6 +14,7 @@ const ReflectionScript = preload("res://scripts/agent/reflection.gd")
 const PlanningScript = preload("res://scripts/agent/planning.gd")
 const RelationshipsScript = preload("res://scripts/agent/relationships.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
+const AgentGoalsScript = preload("res://scripts/agent/goals.gd")
 const AgentScene = preload("res://scenes/entities/Agent.tscn")
 const SessionResetScript = preload("res://scripts/session_reset.gd")
 
@@ -112,7 +113,7 @@ func _destroy_runtime() -> void:
 	for rec in records:
 		if is_instance_valid(rec.get("decision")):
 			rec["decision"].set_enabled(false)
-		for key in ["persona", "memory", "relationships", "planning", "decision", "reflection"]:
+		for key in ["persona", "memory", "relationships", "goals", "planning", "decision", "reflection"]:
 			var node: Node = rec.get(key)
 			if node != null and is_instance_valid(node) and node.get_parent() != null:
 				node.get_parent().remove_child(node)
@@ -164,6 +165,12 @@ func _spawn_agents() -> void:
 		_runtime_parent.add_child(relationships)
 		relationships.open(str(player.agent_id))
 
+		var goals: AgentGoalsScript = AgentGoalsScript.new()
+		goals.name = "Goals_%s" % player.agent_id
+		_runtime_parent.add_child(goals)
+		goals.open(str(player.agent_id))
+		goals.seed_from_config(cfg)
+
 		var planning: PlanningScript = PlanningScript.new()
 		planning.name = "Planning_%s" % player.agent_id
 		_runtime_parent.add_child(planning)
@@ -176,9 +183,9 @@ func _spawn_agents() -> void:
 		reflection.name = "Reflection_%s" % player.agent_id
 		_runtime_parent.add_child(reflection)
 
-		planning.setup(player, _clock, _llm, persona, memory, comm, relationships)
+		planning.setup(player, _clock, _llm, persona, memory, comm, relationships, goals)
 		planning.set_logger(_logger)
-		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships)
+		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships, goals)
 		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id))
 		reflection.set_logger(_logger)
 
@@ -187,6 +194,7 @@ func _spawn_agents() -> void:
 			"persona": persona,
 			"memory": memory,
 			"relationships": relationships,
+			"goals": goals,
 			"planning": planning,
 			"decision": decision,
 			"reflection": reflection,

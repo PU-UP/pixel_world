@@ -4,6 +4,21 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.0
+
+在 v1.1 观测与决策优化之上，新增地图探索、目标与上帝视角。
+
+- **更大地图** — 96×96 瓦片荒岛（原 64×64）
+- **战争迷雾** — 每个 agent 独立探索：当前视野亮、已探索灰、未探索黑
+- **上帝视角（G）** — 全图可见、无迷雾；Tab 跟随单个 agent 时恢复迷雾视角
+- **目标系统** — 每名 agent 有长期目标与当前目标，注入规划/决策 prompt
+- **地图共享（SHARE_MAP）** — 双方对彼此发起 SHARE_MAP 后合并已探索灰色区域
+- **P8.4** — OBSERVE 超距自动靠近、重复 MOVE 跳过、SAY 长度限制
+
+## v1.1
+
+P8 观测与决策硬化：日志 digest、action gate、MOVE 吸附、token 节流。详见上文 v1.0 功能列表。
+
 ## v1.0
 
 首个可玩版本（P0–P7），5 个 LLM agent 同图自主运行，支持上帝视角观测。
@@ -60,6 +75,7 @@ GUT 单测见 [`docs/testing-setup.md`](./docs/testing-setup.md)。
 | F1 / F2 | 暂停 / 单步 |
 | Tab | 切换 agent |
 | F4 / F5 / F6 | 记忆 / 关系+计划 / 小地图 |
+| G | 上帝视角（全图 / 迷雾切换） |
 | Ctrl+R | 重置世界 |
 | ` | 隐藏 HUD |
 

@@ -53,10 +53,11 @@ def main() -> int:
 
     mem = wipe_json_in("memory")
     rel = wipe_json_in("relationships")
+    goals = wipe_json_in("goals")
     logs = wipe_logs() if args.logs else 0
 
     print()
-    print(f"Reset complete: memory={mem}, relationships={rel}, log_files={logs}")
+    print(f"Reset complete: memory={mem}, relationships={rel}, goals={goals}, log_files={logs}")
     print("Start Godot and press F5 — agents spawn fresh (F3 for agent mode).")
     if not args.logs:
         print("Logs kept. Use --logs to wipe session history too.")

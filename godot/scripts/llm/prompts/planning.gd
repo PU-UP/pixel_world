@@ -10,6 +10,7 @@ static func build_messages(
 	observation: String,
 	recent_actions: PackedStringArray,
 	relationship_lines: PackedStringArray,
+	goal_text: String = "",
 ) -> Array:
 	var system := """You are an autonomous agent planning the next stretch of activity on a 2D pixel island.
 Write a numbered list of 5-7 short steps you intend to follow, in Simplified Chinese (简体中文).
@@ -24,6 +25,8 @@ One step per line, format: "1. ..." """
 	parts.append("=== Observation ===\n%s" % observation)
 	if relationship_lines.size() > 0:
 		parts.append("=== Relationships (nearby) ===\n%s" % "\n".join(relationship_lines))
+	if not goal_text.is_empty():
+		parts.append("=== Goals ===\n%s" % goal_text)
 	if recent_actions.size() > 0:
 		parts.append("=== Recent actions ===\n%s" % "\n".join(recent_actions))
 	parts.append("=== Task ===\nGenerate your plan for the next while.")

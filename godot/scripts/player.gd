@@ -11,6 +11,7 @@ const GameWorld = preload("res://scripts/world/world.gd")
 const GameClock = preload("res://scripts/world/clock.gd")
 const AStarPathfinder = preload("res://scripts/world/pathfinding.gd")
 const AgentActions = preload("res://scripts/agent/actions.gd")
+const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
 
 const TILE_SIZE: int = GameWorld.TILE_SIZE
 
@@ -41,6 +42,7 @@ var _pending_reply_tick: int = -1
 var _last_say_text: String = ""
 var _last_say_tick: int = -1
 var inventory: Array = []
+var exploration: ExplorationMap = ExplorationMap.new()
 var action_log: Array = []
 
 const _ACTION_KIND_ZH: Dictionary = {
@@ -51,6 +53,7 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"observe": "观察",
 	"use": "使用",
 	"give": "给予",
+	"share_map": "共享地图",
 	"received": "收到",
 	"heard": "听到",
 }
@@ -149,6 +152,8 @@ func _rebuild_sprite() -> void:
 
 func bind_world(world) -> void:
 	_world = world
+	if _world != null:
+		exploration.reset(_world.MAP_WIDTH, _world.MAP_HEIGHT)
 	if is_inside_tree():
 		_relocate_spawn()
 
@@ -272,6 +277,8 @@ func _pump_next_action() -> void:
 			_execute_use(_current_action)
 		AgentActions.KIND_GIVE:
 			_execute_give(_current_action)
+		AgentActions.KIND_SHARE_MAP:
+			_execute_share_map(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -450,6 +457,33 @@ func _execute_give(action: Dictionary) -> void:
 	_pump_next_action()
 
 
+func _execute_share_map(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var to_id: String = str(p.get("to", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	if _comm == null:
+		_log_action(tick, "share_map", "FAILED no comm router")
+		_log_obs_action(AgentActions.KIND_SHARE_MAP, p, false, "no comm router")
+	elif to_id.is_empty():
+		_log_action(tick, "share_map", "FAILED empty target")
+		_log_obs_action(AgentActions.KIND_SHARE_MAP, p, false, "empty target")
+	else:
+		var res: Dictionary = _comm.deliver_share_map(self, to_id, tick)
+		if res.get("ok", false):
+			var detail: String = "→ %s" % to_id
+			if res.get("mutual", false):
+				detail += " (merged %d tiles)" % int(res.get("merged", 0))
+			else:
+				detail += " (pending consensus)"
+			_log_action(tick, "share_map", detail)
+			_log_obs_action(AgentActions.KIND_SHARE_MAP, p, true, detail)
+		else:
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "share_map", "FAILED %s" % err)
+			_log_obs_action(AgentActions.KIND_SHARE_MAP, p, false, err, err)
+	_pump_next_action()
+
+
 func _use_target_valid(on_target: String) -> bool:
 	if on_target.is_empty() or on_target in ["self", str(agent_id)]:
 		return true
@@ -479,6 +513,10 @@ func receive_say(from_id: String, text: String, _tone: String, tick: int) -> voi
 func receive_item(from_id: String, item_id: String, tick: int) -> void:
 	inventory.append(item_id)
 	_log_action(tick, "received", "%s gave %s" % [from_id, item_id])
+
+
+func receive_share_offer(from_id: String, tick: int) -> void:
+	_log_action(tick, "heard", "%s 提议共享已探索地图（需双方 SHARE_MAP 达成一致）" % from_id)
 
 
 func get_recent_heard_lines(limit: int = 4) -> PackedStringArray:
@@ -557,6 +595,7 @@ func _refresh_observation_if_needed() -> void:
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | 听到: " + "; ".join(heard)
+	exploration.update_observer(Vector2i(cx, cy), observation_radius_tiles)
 
 func _tile_name(t: int) -> String:
 	match t:

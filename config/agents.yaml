@@ -1,8 +1,10 @@
 agents:
   - id: explorer
     display_name: 探险家
-    spawn_tile: [28, 32]
+    spawn_tile: [42, 48]
     color: [0.78, 0.23, 0.23]
+    long_term_goal: "绘制整座荒岛的完整地图并标注可通行路线"
+    current_goal: "扩展已探索区域，记录地形与路线"
     persona:
       curiosity: 0.85
       sociability: 0.5
@@ -11,8 +13,10 @@ agents:
 
   - id: scout
     display_name: 斥候
-    spawn_tile: [36, 28]
+    spawn_tile: [54, 42]
     color: [0.25, 0.55, 0.82]
+    long_term_goal: "掌握全岛地形与视野制高点，及时通报异动"
+    current_goal: "占据制高点侦察周边，留意异常"
     persona:
       curiosity: 0.6
       sociability: 0.4
@@ -21,8 +25,10 @@ agents:
 
   - id: sage
     display_name: 智者
-    spawn_tile: [32, 36]
+    spawn_tile: [48, 54]
     color: [0.55, 0.35, 0.75]
+    long_term_goal: "与岛上众人深谈，从对话中理解这座岛与人的故事"
+    current_goal: "寻找可交谈的对象，分享见闻与思考"
     persona:
       curiosity: 0.5
       sociability: 0.75
@@ -31,8 +37,10 @@ agents:
 
   - id: wanderer
     display_name: 漫游者
-    spawn_tile: [24, 36]
+    spawn_tile: [36, 54]
     color: [0.35, 0.72, 0.45]
+    long_term_goal: "漫游全岛，在海滩与林间寻找志趣相投的同伴"
+    current_goal: "沿海岸与草地随意漫游，偶遇有趣之事"
     persona:
       curiosity: 0.7
       sociability: 0.6
@@ -41,8 +49,10 @@ agents:
 
   - id: guardian
     display_name: 守护者
-    spawn_tile: [40, 34]
+    spawn_tile: [60, 51]
     color: [0.82, 0.62, 0.22]
+    long_term_goal: "守护岛上所有人的安全，熟悉每一处地形边界"
+    current_goal: "巡逻熟悉区域，确认同伴安全"
     persona:
       curiosity: 0.4
       sociability: 0.55

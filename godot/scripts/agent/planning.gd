@@ -12,6 +12,7 @@ const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
 const PersonaScript = preload("res://scripts/agent/persona.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
 const AgentRelationships = preload("res://scripts/agent/relationships.gd")
+const AgentGoals = preload("res://scripts/agent/goals.gd")
 
 var _player: Player = null
 var _clock: GameClock = null
@@ -20,6 +21,7 @@ var _persona: PersonaScript = null
 var _memory: MemoryStreamScript = null
 var _comm: CommRouterScript = null
 var _relationships: AgentRelationships = null
+var _goals: AgentGoals = null
 var _agent_id: String = ""
 
 var _steps: Array = []
@@ -39,6 +41,7 @@ func setup(
 	memory: MemoryStreamScript,
 	comm: CommRouterScript,
 	relationships: AgentRelationships,
+	goals: AgentGoals = null,
 ) -> void:
 	_player = player
 	_clock = clock
@@ -47,6 +50,7 @@ func setup(
 	_memory = memory
 	_comm = comm
 	_relationships = relationships
+	_goals = goals
 	_agent_id = str(player.agent_id)
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
@@ -91,12 +95,14 @@ func _request_plan() -> void:
 	var tick := _clock.current_tick()
 	var nearby := _nearby_ids()
 	var rel_lines := _relationships.format_for_decision(nearby) if _relationships else PackedStringArray()
+	var goal_text := _goals.format_for_prompt() if _goals != null else ""
 	var messages: Array = PlanningPrompt.build_messages(
 		_persona.describe(),
 		_player.get_status_line(),
 		_player.get_observation(),
 		_player.get_action_log_lines(4),
 		rel_lines,
+		goal_text,
 	)
 	_busy = true
 	_llm.request_chat(messages, {

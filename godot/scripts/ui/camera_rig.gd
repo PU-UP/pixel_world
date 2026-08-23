@@ -2,17 +2,22 @@ extends Camera2D
 class_name CameraRig
 ##
 ## 滚轮缩放 + 中键拖动画布；跟随目标由 Main 设置
+## G 键切换上帝视角：全图可见、无迷雾
 ##
 
 signal pan_changed(offset: Vector2)
 
-const ZOOM_MIN: float = 0.5
+enum ViewMode { FOLLOW_AGENT, GOD_MAP }
+
+const ZOOM_MIN: float = 0.25
 const ZOOM_MAX: float = 3.0
 const ZOOM_STEP: float = 0.12
 
 var pan_offset: Vector2 = Vector2.ZERO
+var view_mode: int = ViewMode.FOLLOW_AGENT
 
 var _follow_target: Node2D = null
+var _world_center: Vector2 = Vector2.ZERO
 var _panning: bool = false
 var _pan_mouse_start: Vector2 = Vector2.ZERO
 var _pan_offset_start: Vector2 = Vector2.ZERO
@@ -22,13 +27,40 @@ func set_follow_target(target: Node2D) -> void:
 	_follow_target = target
 
 
+func set_view_mode(mode: int) -> void:
+	view_mode = mode
+
+
+func set_world_center(center: Vector2) -> void:
+	_world_center = center
+
+
 func reset_view() -> void:
 	zoom = Vector2.ONE
 	pan_offset = Vector2.ZERO
 	_panning = false
+	view_mode = ViewMode.FOLLOW_AGENT
+
+
+func fit_world(world_size: Vector2) -> void:
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var view_size: Vector2 = vp.get_visible_rect().size
+	if world_size.x <= 0.0 or world_size.y <= 0.0:
+		return
+	var zx: float = view_size.x / world_size.x
+	var zy: float = view_size.y / world_size.y
+	var z: float = clampf(minf(zx, zy) * 0.92, ZOOM_MIN, ZOOM_MAX)
+	zoom = Vector2(z, z)
+	global_position = world_size * 0.5 + pan_offset
 
 
 func apply_follow() -> void:
+	if view_mode == ViewMode.GOD_MAP:
+		position_smoothing_enabled = false
+		global_position = _world_center + pan_offset
+		return
 	position_smoothing_enabled = pan_offset.length() < 0.5 and not _panning
 	if _follow_target != null and is_instance_valid(_follow_target):
 		global_position = _follow_target.global_position + pan_offset

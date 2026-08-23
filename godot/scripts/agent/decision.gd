@@ -17,6 +17,7 @@ const MemoryStreamScript = preload("res://scripts/agent/memory/stream.gd")
 const CommRouterScript = preload("res://scripts/agent/comm.gd")
 const AgentPlanning = preload("res://scripts/agent/planning.gd")
 const AgentRelationships = preload("res://scripts/agent/relationships.gd")
+const AgentGoals = preload("res://scripts/agent/goals.gd")
 const AgentActions = preload("res://scripts/agent/actions.gd")
 
 var _player: Player = null
@@ -28,6 +29,7 @@ var _memory: MemoryStreamScript = null
 var _comm: CommRouterScript = null
 var _planning: AgentPlanning = null
 var _relationships: AgentRelationships = null
+var _goals: AgentGoals = null
 
 var _busy: bool = false
 var _last_raw: String = ""
@@ -48,6 +50,7 @@ func setup(
 	comm: CommRouterScript = null,
 	planning: AgentPlanning = null,
 	relationships: AgentRelationships = null,
+	goals: AgentGoals = null,
 ) -> void:
 	_player = player
 	_clock = clock
@@ -58,6 +61,7 @@ func setup(
 	_comm = comm
 	_planning = planning
 	_relationships = relationships
+	_goals = goals
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -123,6 +127,7 @@ func _request_decision() -> void:
 		_packed_strings(ctx.get("pickup_item_ids", [])),
 		ctx.get("inventory", []),
 	)
+	var goal_lines := _goal_lines()
 	var messages: Array = DecisionPrompt.build_messages(
 		_persona.describe(),
 		guard["text"],
@@ -140,6 +145,7 @@ func _request_decision() -> void:
 		_player.get_last_say_text(),
 		walkable_near,
 		_bad_move_lines(),
+		goal_lines,
 	)
 	_busy = true
 	_last_error = ""
@@ -172,7 +178,11 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 			gate = _gate_action(action)
 		if gate["ok"] and action["kind"] == AgentActions.KIND_SAY:
 			var say_text: String = str(action["params"].get("text", "")).strip_edges()
-			if _player.would_repeat_say(say_text):
+			if _say_too_long(say_text):
+				result = {"ok": false, "error": "say_too_long"}
+				_last_action = action
+				_last_error = result["error"]
+			elif _player.would_repeat_say(say_text):
 				result = {"ok": false, "error": "repeat_say_blocked"}
 				_last_action = action
 				_last_error = result["error"]
@@ -184,6 +194,10 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 			_last_action = action
 			_last_error = ""
 			result = ActionExecutor.execute(_player, action, _comm, _clock)
+		elif not gate["ok"] and str(gate.get("hint", "")) == "already_there":
+			_last_action = action
+			_last_error = ""
+			result = {"ok": true, "error": "", "detail": "skipped duplicate move"}
 		else:
 			_last_action = action
 			_last_error = gate["error"]
@@ -270,7 +284,7 @@ func _maybe_redirect_action(action: Dictionary, gate: Dictionary) -> Dictionary:
 	if hint != "move_closer":
 		return action
 	var kind: String = str(action.get("kind", ""))
-	if kind != AgentActions.KIND_SAY and kind != AgentActions.KIND_GIVE:
+	if kind != AgentActions.KIND_SAY and kind != AgentActions.KIND_GIVE and kind != AgentActions.KIND_SHARE_MAP:
 		return action
 	var target_id: String = str(action["params"].get("to", "")).strip_edges()
 	if kind == AgentActions.KIND_SAY and not _player.get_pending_reply_from().is_empty():
@@ -376,6 +390,21 @@ func _bad_move_lines() -> PackedStringArray:
 	for key in _bad_move_keys:
 		lines.append("(%s) unwalkable or unreachable" % key)
 	return lines
+
+
+func _goal_lines() -> PackedStringArray:
+	var lines: PackedStringArray = PackedStringArray()
+	if _goals == null:
+		return lines
+	var text: String = _goals.format_for_prompt()
+	if not text.is_empty():
+		lines.append(text)
+	return lines
+
+
+func _say_too_long(text: String) -> bool:
+	var max_chars: int = Config.decision_max_say_chars()
+	return max_chars > 0 and text.length() > max_chars
 
 
 func _format_memories(memories: Array) -> PackedStringArray:

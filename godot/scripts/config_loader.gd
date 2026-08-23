@@ -78,6 +78,14 @@ func decision_min_ticks_between() -> int:
 	return int(decision_cfg().get("min_ticks_between", 0))
 
 
+func decision_max_say_chars() -> int:
+	return int(decision_cfg().get("max_say_chars", 180))
+
+
+func exploration_cfg() -> Dictionary:
+	return runtime.get("exploration", {})
+
+
 func agent_config() -> Dictionary:
 	var list: Array = all_agents()
 	if list.is_empty():

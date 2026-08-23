@@ -23,6 +23,7 @@ static func build_messages(
 	last_say_text: String = "",
 	walkable_near_lines: PackedStringArray = [],
 	blocked_move_lines: PackedStringArray = [],
+	goal_lines: PackedStringArray = [],
 ) -> Array:
 	var system := """You are an autonomous agent in a 2D pixel island world with other agents.
 Each game tick you must choose exactly ONE action using the provided tool.
@@ -30,7 +31,8 @@ Only tools listed in the request are available — pick one of them.
 MOVE_TO uses tile coordinates (integers). You cannot walk on water, trees, or mountains.
 If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
 If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
-Language: SAY.text MUST be Simplified Chinese (简体中文).
+SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
+Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
 Respond ONLY via tool/function call — no free-form answer."""
 	var user_parts: PackedStringArray = []
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
@@ -68,6 +70,8 @@ Respond ONLY via tool/function call — no free-form answer."""
 		user_parts.append("=== Recently heard speech ===\n%s" % "\n".join(heard_lines))
 	if relationship_lines.size() > 0:
 		user_parts.append("=== Relationships (nearby) ===\n%s" % "\n".join(relationship_lines))
+	if goal_lines.size() > 0:
+		user_parts.append("=== Goals ===\n%s" % "\n".join(goal_lines))
 	if memory_lines.size() > 0:
 		user_parts.append("=== Relevant memories ===\n%s" % "\n".join(memory_lines))
 	user_parts.append("=== Task ===\nChoose your next action for this tick.")
@@ -158,6 +162,15 @@ static func tool_definitions_for_context(
 				},
 				["item", "to"],
 			))
+	if audio_agent_ids.size() > 0:
+		tools.append(_fn(
+			AgentActions.KIND_SHARE_MAP,
+			"Offer to share your explored map with an agent (mutual SHARE_MAP merges gray areas)",
+			{
+				"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
+			},
+			["to"],
+		))
 	return tools
 
 
