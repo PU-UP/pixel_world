@@ -35,6 +35,5 @@ class Action:
 
 ## 当前状态
 
-- ⏳ P1 阶段: 仅在 `player.gd` 中用键盘直接驱动
-- ⏳ P2 阶段: 引入 `MOVE_TO` 原语,键盘点击→原语
-- ⏳ P3 阶段: LLM 决策→原语
+- 已实现：`MOVE_TO` `SAY` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT`
+- 未实现：`EMOTE` `SLEEP`

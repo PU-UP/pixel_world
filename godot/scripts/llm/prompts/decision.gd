@@ -29,8 +29,10 @@ static func build_messages(
 Each game tick you must choose exactly ONE action using the provided tool.
 Only tools listed in the request are available — pick one of them.
 MOVE_TO uses tile coordinates (integers). You cannot walk on water, trees, or mountains.
+Do not MOVE_TO another agent's exact tile — stand on an adjacent walkable tile to talk.
 If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
 If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
+WAIT to stand still for a few ticks when you have nothing urgent to do.
 SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
 Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
 Respond ONLY via tool/function call — no free-form answer."""
@@ -171,6 +173,15 @@ static func tool_definitions_for_context(
 			},
 			["to"],
 		))
+	var max_wait: int = Config.decision_wait_max_ticks()
+	tools.append(_fn(
+		AgentActions.KIND_WAIT,
+		"Stay idle for N ticks (1-%d). Use when waiting for others or pausing." % max_wait,
+		{
+			"ticks": {"type": "integer", "description": "ticks to wait, 1-%d" % max_wait},
+		},
+		["ticks"],
+	))
 	return tools
 
 

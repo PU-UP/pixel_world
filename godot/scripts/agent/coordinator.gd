@@ -258,7 +258,7 @@ func _build_agent_snapshots() -> Array:
 			"tile": [tile.x, tile.y],
 			"region": region_name,
 			"inventory": player.inventory.duplicate(),
-			"state": "walking" if player.is_busy() else "idle",
+			"state": player.busy_state(),
 			"queue_len": player.queued_action_count(),
 		})
 	return rows

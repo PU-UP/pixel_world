@@ -278,8 +278,7 @@ func _maybe_redirect_action(action: Dictionary, gate: Dictionary) -> Dictionary:
 		if _comm != null and not approach_id.is_empty():
 			var other: Player = _comm.find_player(approach_id)
 			if other != null:
-				var tile: Vector2i = other.get_tile_position()
-				return AgentActions.make_move_to(tile.x, tile.y)
+				return _redirect_to_meeting(other)
 		return action
 	if hint != "move_closer":
 		return action
@@ -294,8 +293,22 @@ func _maybe_redirect_action(action: Dictionary, gate: Dictionary) -> Dictionary:
 	var other: Player = _comm.find_player(target_id)
 	if other == null:
 		return action
-	var tile: Vector2i = other.get_tile_position()
-	return AgentActions.make_move_to(tile.x, tile.y)
+	return _redirect_to_meeting(other)
+
+
+func _redirect_to_meeting(other: Player) -> Dictionary:
+	var ctx: Dictionary = AgentActions.build_context(_player, _comm, _player.game_world())
+	var meet: Dictionary = AgentActions.resolve_meeting_tile(
+		_player.game_world(),
+		_player.get_tile_position(),
+		other.get_tile_position(),
+		ctx.get("occupied_tiles", []),
+	)
+	if meet.get("ok", false):
+		var tile: Vector2i = meet.get("tile", _player.get_tile_position())
+		return AgentActions.make_move_to(tile.x, tile.y)
+	var fallback: Vector2i = other.get_tile_position()
+	return AgentActions.make_move_to(fallback.x, fallback.y)
 
 
 func _record_outcome(tick: int, action: Dictionary, result: Dictionary) -> void:

@@ -54,18 +54,22 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"use": "使用",
 	"give": "给予",
 	"share_map": "共享地图",
+	"wait": "等待",
 	"received": "收到",
 	"heard": "听到",
 }
 var _selected: bool = false
 
 # ---- P2 状态机 ----
-enum State { IDLE, WALKING }
+enum State { IDLE, WALKING, WAITING }
 var _state: int = State.IDLE
 var _action_queue: Array = []           # 待执行的 actions
 var _current_action: Dictionary = {}    # 正在执行的
 var _current_path: Array = []           # 像素路径 (Vector2)
 var _path_idx: int = 0                  # 下一个要走的路径点索引
+var _wait_remaining: int = 0
+var _walk_anchor: Vector2 = Vector2.ZERO
+var _walk_stuck_time: float = 0.0
 
 # ---- Debug draw ----
 var _debug_path: PackedVector2Array = PackedVector2Array()
@@ -75,7 +79,7 @@ var _pending_spawn: Variant = null
 # 生命周期
 # ------------------------------------------------------------------
 func is_busy() -> bool:
-	return _state == State.WALKING
+	return _state == State.WALKING or _state == State.WAITING
 
 
 func get_tile_position() -> Vector2i:
@@ -116,6 +120,8 @@ func _apply_runtime_config() -> void:
 
 func _ready() -> void:
 	_apply_runtime_config()
+	collision_layer = 1
+	collision_mask = 0
 	_rebuild_sprite()
 	_last_position = global_position
 
@@ -162,7 +168,11 @@ func game_world() -> GameWorld:
 	return _world
 
 func bind_clock(clock) -> void:
+	if _clock != null and _clock.tick.is_connected(_on_clock_tick):
+		_clock.tick.disconnect(_on_clock_tick)
 	_clock = clock
+	if _clock != null and not _clock.tick.is_connected(_on_clock_tick):
+		_clock.tick.connect(_on_clock_tick)
 
 
 func bind_comm(comm) -> void:
@@ -175,6 +185,14 @@ func bind_observability(logger) -> void:
 
 func queued_action_count() -> int:
 	return _action_queue.size()
+
+
+func busy_state() -> String:
+	if _state == State.WAITING:
+		return "waiting"
+	if _state == State.WALKING:
+		return "walking"
+	return "idle"
 
 # ------------------------------------------------------------------
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
@@ -210,6 +228,8 @@ func clear_action_queue() -> void:
 	_action_queue.clear()
 	_current_path = []
 	_path_idx = 0
+	_wait_remaining = 0
+	_walk_stuck_time = 0.0
 	_state = State.IDLE
 	_current_action = {}
 
@@ -279,6 +299,8 @@ func _pump_next_action() -> void:
 			_execute_give(_current_action)
 		AgentActions.KIND_SHARE_MAP:
 			_execute_share_map(_current_action)
+		AgentActions.KIND_WAIT:
+			_execute_wait(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -304,6 +326,8 @@ func _start_move_to(gx: int, gy: int) -> void:
 	for t in path:
 		_current_path.append(Vector2(int(t.x) * TILE_SIZE + TILE_SIZE * 0.5, int(t.y) * TILE_SIZE + TILE_SIZE * 0.5))
 	_path_idx = 0
+	_walk_anchor = global_position
+	_walk_stuck_time = 0.0
 	_state = State.WALKING
 	_log_action(_clock.current_tick() if _clock else -1, "move", "→ (%d, %d)  path_len=%d" % [gx, gy, path.size()])
 	_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": gx, "y": gy}, true, "path_len=%d" % path.size())
@@ -484,6 +508,29 @@ func _execute_share_map(action: Dictionary) -> void:
 	_pump_next_action()
 
 
+func _execute_wait(action: Dictionary) -> void:
+	var ticks: int = int(action.get("params", {}).get("ticks", 1))
+	var max_wait: int = Config.decision_wait_max_ticks()
+	ticks = clampi(ticks, 1, max_wait)
+	var tick: int = _clock.current_tick() if _clock else -1
+	_wait_remaining = ticks
+	_state = State.WAITING
+	_log_action(tick, "wait", "%d ticks" % ticks)
+	_log_obs_action(AgentActions.KIND_WAIT, action.get("params", {}), true, "wait %d" % ticks)
+
+
+func _on_clock_tick(_tick_index: int) -> void:
+	if _state != State.WAITING:
+		return
+	_wait_remaining -= 1
+	if _wait_remaining > 0:
+		return
+	_wait_remaining = 0
+	_state = State.IDLE
+	_current_action = {}
+	_pump_next_action()
+
+
 func _use_target_valid(on_target: String) -> bool:
 	if on_target.is_empty() or on_target in ["self", str(agent_id)]:
 		return true
@@ -542,6 +589,31 @@ func _advance_along_path(delta: float) -> void:
 	dir = dir / dist
 	velocity = dir * move_speed_px
 	move_and_slide()
+	var cfg: Dictionary = Config.movement_cfg()
+	var abort_s: float = float(cfg.get("stuck_abort_s", 1.5))
+	var min_disp: float = float(cfg.get("stuck_min_displacement_px", 2.0))
+	if global_position.distance_to(_walk_anchor) >= min_disp:
+		_walk_anchor = global_position
+		_walk_stuck_time = 0.0
+	else:
+		_walk_stuck_time += delta
+		if abort_s > 0.0 and _walk_stuck_time >= abort_s:
+			_abort_stuck_move()
+
+
+func _abort_stuck_move() -> void:
+	var tick: int = _clock.current_tick() if _clock else -1
+	var tile: Vector2i = get_tile_position()
+	_current_path = []
+	_path_idx = 0
+	_walk_stuck_time = 0.0
+	_state = State.IDLE
+	_current_action = {}
+	_log_action(tick, "move", "stuck abort at (%d, %d)" % [tile.x, tile.y])
+	_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": tile.x, "y": tile.y}, true, "movement_stuck")
+	if _obs_logger != null:
+		_obs_logger.log_movement_stuck(str(agent_id), tick, tile)
+	_pump_next_action()
 
 # ------------------------------------------------------------------
 # P1.5 — 视野感知 / 行动日志 / 观测接口
@@ -595,7 +667,7 @@ func _refresh_observation_if_needed() -> void:
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | 听到: " + "; ".join(heard)
-	exploration.update_observer(Vector2i(cx, cy), observation_radius_tiles)
+	exploration.update_observer(Vector2i(cx, cy), observation_radius_tiles, _world, t)
 
 func _tile_name(t: int) -> String:
 	match t:
@@ -717,9 +789,14 @@ func get_status_line() -> String:
 	var tile_y: int = int(floor(global_position.y / TILE_SIZE))
 	var t: int = _world.tile_at(global_position) if _world != null else -1
 	var queue_n: int = _action_queue.size()
+	var state_zh := "空闲"
+	if _state == State.WALKING:
+		state_zh = "行走"
+	elif _state == State.WAITING:
+		state_zh = "等待"
 	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s" % [
 		str(agent_id),
-		"行走" if _state == State.WALKING else "空闲",
+		state_zh,
 		queue_n,
 		_inventory_summary(),
 		tile_x,

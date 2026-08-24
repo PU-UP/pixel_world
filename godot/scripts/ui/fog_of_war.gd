@@ -1,7 +1,7 @@
 extends Node2D
 class_name FogOfWarLayer
 ##
-## 战争迷雾：未探索=黑，已探索非视野=灰，当前视野=无遮罩
+## 战争迷雾：未探索=黑；已探索=该格快照地形（变暗）；当前视野=无遮罩
 ##
 
 const GameWorld = preload("res://scripts/world/world.gd")
@@ -11,8 +11,7 @@ var _world: GameWorld = null
 var _exploration: ExplorationMap = null
 var _god_mode: bool = false
 
-const COLOR_UNEXPLORED := Color(0.02, 0.02, 0.05, 0.92)
-const COLOR_EXPLORED := Color(0.12, 0.12, 0.16, 0.72)
+const COLOR_UNEXPLORED := Color(0.02, 0.02, 0.05, 1.0)
 
 
 func setup(world: GameWorld) -> void:
@@ -46,4 +45,10 @@ func _draw() -> void:
 			if state == ExplorationMap.TileVis.UNEXPLORED:
 				draw_rect(rect, COLOR_UNEXPLORED)
 			else:
-				draw_rect(rect, COLOR_EXPLORED)
+				var terrain: int = _exploration.snapshot_terrain(x, y)
+				if terrain < 0:
+					terrain = _world.tile_at_tile(Vector2i(x, y))
+				var c: Color = GameWorld.TILE_COLORS.get(terrain, Color(0.2, 0.2, 0.22))
+				c = c.darkened(0.4)
+				c.a = 1.0
+				draw_rect(rect, c)

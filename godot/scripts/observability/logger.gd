@@ -221,6 +221,15 @@ func log_action_result(
 		_record_anomaly("action_failed", tick, agent_id, "%s: %s" % [kind, error if not error.is_empty() else detail])
 
 
+func log_movement_stuck(agent_id: String, tick: int, tile: Vector2i) -> void:
+	_record_anomaly(
+		"movement_stuck",
+		tick,
+		agent_id,
+		"walking abort at (%d, %d)" % [tile.x, tile.y],
+	)
+
+
 func log_reflection(agent_id: String, tick: int, text: String) -> void:
 	log_event("reflection", {
 		"tick": tick,
@@ -324,22 +333,20 @@ func _track_stuck_agents(tick: int, agents: Array) -> void:
 			continue
 		var key := "%d,%d" % [int(tile_arr[0]), int(tile_arr[1])]
 		var state: String = str(row.get("state", ""))
-		if state != "idle":
-			_stuck_tracker[aid] = {"tile_key": key, "count": 0}
-			continue
 		var prev: Dictionary = _stuck_tracker.get(aid, {})
 		if str(prev.get("tile_key", "")) == key:
 			var count: int = int(prev.get("count", 0)) + 1
-			_stuck_tracker[aid] = {"tile_key": key, "count": count}
+			_stuck_tracker[aid] = {"tile_key": key, "count": count, "state": state}
 			if count == threshold:
+				var kind := "stuck_idle" if state == "idle" else "stuck_walking"
 				_record_anomaly(
-					"stuck_idle",
+					kind,
 					tick,
 					aid,
-					"idle at (%s) for %d snapshots" % [key, count],
+					"%s at (%s) for %d snapshots" % [state, key, count],
 				)
 		else:
-			_stuck_tracker[aid] = {"tile_key": key, "count": 1}
+			_stuck_tracker[aid] = {"tile_key": key, "count": 1, "state": state}
 
 
 func _write_line(entry: Dictionary) -> void:

@@ -61,6 +61,10 @@ func _draw() -> void:
 				draw_rect(Rect2(x * sx, y * sy, maxf(sx, 1.0), maxf(sy, 1.0)), COLOR_FOG_UNEXP)
 				continue
 			var t: int = _world.tile_at_tile(Vector2i(x, y))
+			if fog_state == ExplorationMap.TileVis.EXPLORED and _exploration != null:
+				var snap: int = _exploration.snapshot_terrain(x, y)
+				if snap >= 0:
+					t = snap
 			var c: Color = GameWorld.TILE_COLORS.get(t, Color.GRAY)
 			if fog_state == ExplorationMap.TileVis.EXPLORED:
 				c = c.darkened(0.45)
@@ -68,7 +72,7 @@ func _draw() -> void:
 	if _world.state != null and (_god_mode or _exploration != null):
 		for item in _world.state.all_ground_items():
 			var it: Vector2i = item.get("tile", Vector2i.ZERO)
-			if not _god_mode and _exploration != null and not _exploration.is_explored(it.x, it.y):
+			if not _god_mode and _exploration != null and _exploration.get_state(it.x, it.y) != ExplorationMap.TileVis.VISIBLE:
 				continue
 			var ipx: float = it.x * sx + sx * 0.5
 			var ipy: float = it.y * sy + sy * 0.5
@@ -79,7 +83,7 @@ func _draw() -> void:
 			continue
 		var p: PlayerScript = agent
 		var tile: Vector2i = p.get_tile_position()
-		if not _god_mode and _exploration != null and not _exploration.is_explored(tile.x, tile.y):
+		if not _god_mode and _exploration != null and _exploration.get_state(tile.x, tile.y) != ExplorationMap.TileVis.VISIBLE:
 			continue
 		var px: float = tile.x * sx + sx * 0.5
 		var py: float = tile.y * sy + sy * 0.5

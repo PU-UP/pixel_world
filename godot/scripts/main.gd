@@ -14,6 +14,7 @@ const DecisionScript = preload("res://scripts/agent/decision.gd")
 const MinimapScript = preload("res://scripts/ui/minimap.gd")
 const CameraRigScript = preload("res://scripts/ui/camera_rig.gd")
 const FogOfWarScript = preload("res://scripts/ui/fog_of_war.gd")
+const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
@@ -32,6 +33,9 @@ enum ControlMode { MANUAL, AGENT }
 @onready var _obs_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/ObsScroll
 @onready var _action_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/ActionScroll
 @onready var _decision_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/DecisionScroll
+@onready var _hud_roster: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/RosterScroll/RosterLabel
+@onready var _roster_scroll: ScrollContainer = $HUD/Root/HBox/ObservePanel/ObserveVBox/RosterScroll
+@onready var _roster_header: Label = $HUD/Root/HBox/ObservePanel/ObserveVBox/RosterHeader
 @onready var _memory_panel: PanelContainer = $HUD/Root/HBox/MemoryPanel
 @onready var _hud_memory_title: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/MemoryHeader/MemoryTitle
 @onready var _hud_reflection: Label = $HUD/Root/HBox/MemoryPanel/MemoryVBox/ReflectionScroll/ReflectionLabel
@@ -50,13 +54,14 @@ var _relation_visible: bool = false
 var _minimap_visible: bool = false
 var _control_mode: int = ControlMode.MANUAL
 var _observe_details_visible: bool = true
-var _god_view: bool = false
+var _god_view: bool = true
 var _fog: FogOfWarLayer = null
 
 
 func _ready() -> void:
 	_camera.make_current()
 	_camera.position_smoothing_enabled = true
+	_agents_root.z_index = 10
 	_hud.visible = _debug_visible
 	_memory_panel.visible = _memory_visible
 	_relation_panel.visible = _relation_visible
@@ -75,9 +80,13 @@ func _ready() -> void:
 	move_child(_fog, _agents_root.get_index())
 	_fog.setup(_world)
 	_camera.set_world_center(_world.world_size() * 0.5)
+	_god_view = Config.observer_default_god()
 	_set_control_mode(_control_mode_from_config())
 	_hud_status.gui_input.connect(_on_status_label_gui_input)
 	_apply_observe_details_visibility()
+	if _god_view:
+		_camera.fit_world(_world.world_size())
+	_update_view_mode()
 
 
 func _connect_decision_signals() -> void:
@@ -108,6 +117,7 @@ func _on_roster_changed() -> void:
 
 func _process(_delta: float) -> void:
 	_update_view_mode()
+	_apply_entity_visibility()
 	var agent := _current_agent()
 	_camera.set_follow_target(agent)
 	_camera.apply_follow()
@@ -148,11 +158,35 @@ func _update_view_mode() -> void:
 		var agent := _current_agent()
 		if agent != null:
 			_fog.set_exploration(agent.exploration)
+			_world.set_view_filter(agent.exploration, false)
 	_minimap.set_god_mode(_god_view)
 	if not _god_view:
 		var sel := _current_agent()
 		if sel != null:
 			_minimap.set_exploration(sel.exploration)
+	else:
+		_world.set_view_filter(null, true)
+
+
+func _apply_entity_visibility() -> void:
+	if _god_view:
+		for rec in _coordinator.records:
+			var p: PlayerScript = rec["player"]
+			if p != null and is_instance_valid(p):
+				p.visible = true
+		return
+	var observer := _current_agent()
+	if observer == null or observer.exploration == null:
+		return
+	for rec in _coordinator.records:
+		var p: PlayerScript = rec["player"]
+		if p == null or not is_instance_valid(p):
+			continue
+		if p == observer:
+			p.visible = true
+			continue
+		var t: Vector2i = p.get_tile_position()
+		p.visible = observer.exploration.get_state(t.x, t.y) == ExplorationMap.TileVis.VISIBLE
 
 
 func _selected_record() -> Dictionary:
@@ -210,6 +244,7 @@ func _update_hud() -> void:
 		_hud_observation.text = "（无）"
 		_hud_action_log.text = "（无）"
 		_hud_decision.text = "（无）"
+		_update_roster_hud()
 		return
 	var rec := _selected_record()
 	var name_prefix := str(rec["persona"].display_name) if not rec.is_empty() else str(selected.agent_id)
@@ -220,6 +255,48 @@ func _update_hud() -> void:
 	var decision := _selected_decision()
 	var decision_text := decision.get_last_decision_text() if decision != null else "（无）"
 	_hud_decision.text = "决策：%s" % decision_text
+	_update_roster_hud()
+
+
+func _update_roster_hud() -> void:
+	if _hud_roster == null:
+		return
+	var lines: PackedStringArray = PackedStringArray()
+	var observer := _current_agent()
+	for rec in _coordinator.records:
+		var p: PlayerScript = rec["player"]
+		if p == null or not is_instance_valid(p):
+			continue
+		var tile: Vector2i = p.get_tile_position()
+		var region := "荒野"
+		if _world != null and _world.state != null:
+			region = _world.state.region_name_at(tile)
+		var mark := " "
+		if p == observer:
+			mark = ">"
+		var vis := "亮"
+		if not _god_view and observer != null and observer.exploration != null and p != observer:
+			var st: int = observer.exploration.get_state(tile.x, tile.y)
+			if st == ExplorationMap.TileVis.VISIBLE:
+				vis = "亮"
+			elif st == ExplorationMap.TileVis.EXPLORED:
+				vis = "灰"
+			else:
+				vis = "黑"
+		elif _god_view:
+			vis = "全"
+		var goal := ""
+		if rec.has("goals"):
+			goal = str(rec["goals"].current_goal)
+			if goal.length() > 18:
+				goal = goal.substr(0, 17) + "…"
+		var name_s: String = str(rec["persona"].display_name)
+		lines.append("%s%s %s (%d,%d) %s %s" % [
+			mark, name_s, p.busy_state(), tile.x, tile.y, region, vis,
+		])
+		if not goal.is_empty():
+			lines.append("  %s" % goal)
+	_hud_roster.text = "\n".join(lines) if lines.size() > 0 else "（无）"
 
 
 func _update_memory_hud() -> void:
@@ -283,6 +360,10 @@ func _apply_observe_details_visibility() -> void:
 	_obs_scroll.visible = show
 	_action_scroll.visible = show
 	_decision_scroll.visible = show
+	if _roster_scroll != null:
+		_roster_scroll.visible = show
+	if _roster_header != null:
+		_roster_header.visible = show
 
 
 func _input(event: InputEvent) -> void:
@@ -402,5 +483,7 @@ func _reset_world() -> void:
 		_update_relation_hud()
 	_refresh_minimap()
 	_camera.reset_view()
-	_god_view = false
+	_god_view = Config.observer_default_god()
+	if _god_view:
+		_camera.fit_world(_world.world_size())
 	_update_view_mode()

@@ -8,6 +8,7 @@ class_name GameWorld
 const TILE_SIZE: int = 16
 const WorldStateScript = preload("res://scripts/world/state.gd")
 const WorldEventsScript = preload("res://scripts/world/events.gd")
+const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
 var MAP_WIDTH: int = 64   # 瓦片 — 启动时从 config 覆盖
 var MAP_HEIGHT: int = 64  # 瓦片
 
@@ -25,6 +26,8 @@ var tiles: Array = []   # 二维 [y][x] -> Tile
 var state: WorldStateScript = null
 var events: WorldEventsScript = null
 var rng: RandomNumberGenerator
+var _item_filter = null
+var _god_items: bool = true
 
 func _ready() -> void:
 	rng = RandomNumberGenerator.new()
@@ -70,6 +73,12 @@ func is_walkable_tile(tile: Vector2i) -> bool:
 		return false
 	var t: int = tiles[tile.y][tile.x]
 	return t == Tile.GRASS or t == Tile.SAND
+
+
+func set_view_filter(exploration, god_mode: bool) -> void:
+	_item_filter = exploration
+	_god_items = god_mode
+	queue_redraw()
 
 func tile_at_tile(tile: Vector2i) -> int:
 	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
@@ -140,6 +149,9 @@ func _draw_ground_items() -> void:
 	var defs: Dictionary = Config.world_item_defs()
 	for entry in state.all_ground_items():
 		var tile: Vector2i = entry.get("tile", Vector2i.ZERO)
+		if not _god_items and _item_filter != null:
+			if _item_filter.get_state(tile.x, tile.y) != ExplorationMap.TileVis.VISIBLE:
+				continue
 		var item_id: String = str(entry.get("item_id", ""))
 		var color := Color(0.95, 0.85, 0.25)
 		if defs.has(item_id):

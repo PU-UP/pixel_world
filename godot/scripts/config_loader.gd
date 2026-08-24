@@ -82,6 +82,18 @@ func decision_max_say_chars() -> int:
 	return int(decision_cfg().get("max_say_chars", 180))
 
 
+func decision_wait_max_ticks() -> int:
+	return int(decision_cfg().get("wait_max_ticks", 20))
+
+
+func observer_default_god() -> bool:
+	return bool(runtime.get("observer", {}).get("default_god", true))
+
+
+func movement_cfg() -> Dictionary:
+	return runtime.get("movement", {})
+
+
 func exploration_cfg() -> Dictionary:
 	return runtime.get("exploration", {})
 

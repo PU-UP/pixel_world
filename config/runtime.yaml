@@ -15,11 +15,19 @@ agent:
 control:
   mode: manual   # manual | agent
 
+observer:
+  default_god: true
+
+movement:
+  stuck_abort_s: 1.5
+  stuck_min_displacement_px: 2.0
+
 decision:
   skip_while_walking: true
   repeat_say_block_ticks: 40
   min_ticks_between: 2
   max_say_chars: 180
+  wait_max_ticks: 20
 
 exploration:
   share_consensus_ticks: 60

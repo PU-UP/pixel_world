@@ -21,9 +21,8 @@ const KIND_SHARE_MAP := "SHARE_MAP"
 const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
-# P2: MOVE_TO | P5: SAY | P7: PICK_UP, DROP, OBSERVE
 const IMPLEMENTED_KINDS: Array[String] = [
-	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP,
+	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT,
 ]
 
 # ------------------------------------------------------------------
@@ -190,6 +189,14 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 					"approach_id": target,
 				}
 			return {"ok": false, "error": "unknown/range target: %s" % target, "hint": ""}
+		KIND_WAIT:
+			var ticks: int = int(params.get("ticks", 0))
+			var max_wait: int = int(ctx.get("wait_max_ticks", Config.decision_wait_max_ticks()))
+			if ticks < 1:
+				return {"ok": false, "error": "WAIT ticks must be >= 1", "hint": ""}
+			if ticks > max_wait:
+				return {"ok": false, "error": "WAIT ticks exceed max %d" % max_wait, "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
 		KIND_MOVE_TO:
 			var world = ctx.get("world", null)
 			var start: Vector2i = ctx.get("agent_tile", Vector2i.ZERO)
@@ -198,6 +205,20 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 				return {"ok": true, "error": "", "hint": ""}
 			if goal == start:
 				return {"ok": false, "error": "already at target", "hint": "already_there"}
+			var occupied: Array = ctx.get("occupied_tiles", [])
+			if _tile_key(goal) in occupied:
+				var meet: Dictionary = resolve_meeting_tile(world, start, goal, occupied)
+				if meet.get("ok", false):
+					var meet_tile: Vector2i = meet.get("tile", start)
+					if meet_tile == start:
+						return {"ok": false, "error": "already at meeting tile", "hint": "already_there"}
+					return {
+						"ok": false,
+						"error": "tile occupied (%d, %d)" % [goal.x, goal.y],
+						"hint": "snap_move",
+						"snap_tile": meet_tile,
+					}
+				return {"ok": false, "error": "tile occupied", "hint": "unreachable"}
 			var blocked: Array = ctx.get("blocked_move_tiles", [])
 			if _tile_key(goal) in blocked:
 				var snap_blocked: Dictionary = resolve_move_goal(world, start, goal)
@@ -304,6 +325,12 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 			var pid: String = str(item.get("item_id", ""))
 			if not pid.is_empty():
 				pickup_item_ids.append(pid)
+	var occupied_tiles: Array = []
+	if comm != null:
+		for p in comm.all_players():
+			if p == player:
+				continue
+			occupied_tiles.append(_tile_key(p.get_tile_position()))
 	return {
 		"perception_agent_ids": perception_ids,
 		"audio_agent_ids": audio_ids,
@@ -314,6 +341,8 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 		"agent_tile": agent_tile,
 		"world": world,
 		"blocked_move_tiles": [],
+		"occupied_tiles": occupied_tiles,
+		"wait_max_ticks": Config.decision_wait_max_ticks(),
 	}
 
 
@@ -346,6 +375,31 @@ static func resolve_move_goal(world, start: Vector2i, goal: Vector2i) -> Diction
 	return {"ok": false}
 
 
+## 走向他人时停在邻格，不抢对方脚下。occupied 为 "x,y" 字符串列表。
+static func resolve_meeting_tile(world, start: Vector2i, other: Vector2i, occupied: Array = []) -> Dictionary:
+	if world == null:
+		return {"ok": false}
+	if _chebyshev(start, other) <= 1 and world.is_walkable_tile(start):
+		return {"ok": true, "tile": start, "snapped": true}
+	var best: Vector2i = Vector2i(-1, -1)
+	var best_len: int = 9999
+	for d in AStarPathfinder.DIRS:
+		var t: Vector2i = other + d
+		if _tile_key(t) in occupied:
+			continue
+		if not world.is_walkable_tile(t):
+			continue
+		var path: Array = AStarPathfinder.find_path(world, start, t)
+		if path.is_empty():
+			continue
+		if path.size() < best_len:
+			best_len = path.size()
+			best = t
+	if best == Vector2i(-1, -1):
+		return {"ok": false}
+	return {"ok": true, "tile": best, "snapped": true, "from": other}
+
+
 static func nearby_walkable_tiles(world, center: Vector2i, radius: int = 2) -> PackedStringArray:
 	var out: PackedStringArray = PackedStringArray()
 	if world == null:
@@ -360,6 +414,10 @@ static func nearby_walkable_tiles(world, center: Vector2i, radius: int = 2) -> P
 
 static func _tile_key(tile: Vector2i) -> String:
 	return "%d,%d" % [tile.x, tile.y]
+
+
+static func _chebyshev(a: Vector2i, b: Vector2i) -> int:
+	return maxi(abs(a.x - b.x), abs(a.y - b.y))
 
 
 static func _contains_id(ids: Array, id: String) -> bool:

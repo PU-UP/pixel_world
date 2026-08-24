@@ -22,30 +22,34 @@ func _init() -> void:
 	# _ready 在 SceneTree 下不会自动跑,手动调一次
 	if w.has_method("_ready"):
 		w._ready()
-	if w.tiles.size() == 64:
+	var map_h: int = w.MAP_HEIGHT
+	var map_w: int = w.MAP_WIDTH
+	if w.tiles.size() == map_h:
 		passed += 1
-		print("[OK]   world.tiles = 64 rows")
+		print("[OK]   world.tiles = ", map_h, " rows")
 	else:
 		failed += 1
-		printerr("[FAIL] world.tiles = ", w.tiles.size(), " (want 64)")
-	if w.tiles[32][32] in [0, 1, 4]:  # GRASS / SAND / MOUNTAIN(中心有 35% 概率撞山)
+		printerr("[FAIL] world.tiles = ", w.tiles.size(), " (want ", map_h, ")")
+	var cx: int = int(map_w / 2)
+	var cy: int = int(map_h / 2)
+	if w.tiles[cy][cx] in [0, 1, 4]:
 		passed += 1
-		print("[OK]   world.tiles[32][32] = ", w.tiles[32][32], " (center is land or mountain)")
+		print("[OK]   world.tiles[", cy, "][", cx, "] = ", w.tiles[cy][cx], " (center is land or mountain)")
 	else:
 		failed += 1
-		printerr("[FAIL] center tile is not land or mountain: ", w.tiles[32][32])
-	if w.world_size() == Vector2(1024, 1024):
+		printerr("[FAIL] center tile is not land or mountain: ", w.tiles[cy][cx])
+	var expected_size := Vector2(map_w * 16, map_h * 16)
+	if w.world_size() == expected_size:
 		passed += 1
-		print("[OK]   world.world_size() = (1024, 1024)")
+		print("[OK]   world.world_size() = ", expected_size)
 	else:
 		failed += 1
-		printerr("[FAIL] world.world_size() = ", w.world_size())
-	# 中心点是否可走取决于 seed;seed=1337 会撞山 → 不可走
-	# 改成:中心点可走 OR 是山(都算地形合法)
-	var center_tile: int = w.tile_at(Vector2(512, 512))
-	if w.is_walkable(Vector2(512, 512)) or center_tile == 4:
+		printerr("[FAIL] world.world_size() = ", w.world_size(), " want ", expected_size)
+	var center_px := Vector2(cx * 16 + 8, cy * 16 + 8)
+	var center_tile: int = w.tile_at(center_px)
+	if w.is_walkable(center_px) or center_tile == 4:
 		passed += 1
-		print("[OK]   center tile is non-water (tile=", center_tile, ", walkable=", w.is_walkable(Vector2(512, 512)), ")")
+		print("[OK]   center tile is non-water (tile=", center_tile, ", walkable=", w.is_walkable(center_px), ")")
 	else:
 		failed += 1
 		printerr("[FAIL] center tile should be land or mountain, got: ", center_tile)
@@ -109,6 +113,7 @@ func _init() -> void:
 			"ObservationLabel": hud_base + "/ObsScroll/ObservationLabel",
 			"ActionLogLabel": hud_base + "/ActionScroll/ActionLogLabel",
 			"DecisionLabel": hud_base + "/DecisionScroll/DecisionLabel",
+			"RosterLabel": hud_base + "/RosterScroll/RosterLabel",
 		}
 		var hud_missing := []
 		for label_name in hud_labels:
@@ -247,7 +252,7 @@ func _init() -> void:
 			failed += 1
 			printerr("[FAIL] tick_cost WAIT: ", tc2)
 		# IMPLEMENTED_KINDS 应包含核心原语
-		var required_kinds := ["MOVE_TO", "SAY", "PICK_UP", "OBSERVE"]
+		var required_kinds := ["MOVE_TO", "SAY", "PICK_UP", "OBSERVE", "WAIT"]
 		var kinds_ok := true
 		for kind in required_kinds:
 			if kind not in A.IMPLEMENTED_KINDS:

@@ -152,6 +152,27 @@ theme_override_font_sizes/font_size = 13
 text = "决策：（无）"
 autowrap_mode = 3
 
+[node name="RosterHeader" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.88, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+text = "全员"
+
+[node name="RosterScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
+custom_minimum_size = Vector2(0, 88)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="RosterLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox/RosterScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.86, 0.9, 0.96, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 12
+text = "（无）"
+autowrap_mode = 3
+
 [node name="MemoryPanel" type="PanelContainer" parent="HUD/Root/HBox"]
 visible = false
 layout_mode = 2
