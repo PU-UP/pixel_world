@@ -25,6 +25,60 @@ func reset() -> void:
 	_init_schedule()
 
 
+func capture_save() -> Dictionary:
+	var active: Array = []
+	for ev in _active:
+		var regions: Array = []
+		for r in ev.get("region_ids", []):
+			regions.append(str(r))
+		active.append({
+			"id": str(ev.get("id", "")),
+			"text": str(ev.get("text", "")),
+			"region_ids": regions,
+			"expires_tick": int(ev.get("expires_tick", 0)),
+		})
+	var next_fire: Dictionary = {}
+	for eid in _next_fire.keys():
+		next_fire[str(eid)] = int(_next_fire[eid])
+	return {"active": active, "next_fire": next_fire}
+
+
+func restore_save(data: Dictionary) -> void:
+	_active.clear()
+	_next_fire.clear()
+	var incoming_next: Variant = data.get("next_fire", {})
+	if typeof(incoming_next) == TYPE_DICTIONARY:
+		for eid in incoming_next.keys():
+			_next_fire[str(eid)] = int(incoming_next[eid])
+	if _next_fire.is_empty():
+		_init_schedule()
+	else:
+		for ev in Config.world_event_defs():
+			if typeof(ev) != TYPE_DICTIONARY:
+				continue
+			var eid: String = str(ev.get("id", ""))
+			if eid.is_empty() or _next_fire.has(eid):
+				continue
+			_next_fire[eid] = int(ev.get("first_tick", 20))
+	var incoming_active: Variant = data.get("active", [])
+	if typeof(incoming_active) == TYPE_ARRAY:
+		for raw in incoming_active:
+			if typeof(raw) != TYPE_DICTIONARY:
+				continue
+			var ev: Dictionary = raw
+			var regions: Array = []
+			for r in ev.get("region_ids", []):
+				regions.append(str(r))
+			_active.append({
+				"id": str(ev.get("id", "")),
+				"text": str(ev.get("text", "")),
+				"region_ids": regions,
+				"expires_tick": int(ev.get("expires_tick", 0)),
+			})
+	if _clock != null:
+		_prune_expired(_clock.current_tick())
+
+
 func lines_for_tile(tile: Vector2i) -> PackedStringArray:
 	if _world == null or _world.state == null:
 		return PackedStringArray()

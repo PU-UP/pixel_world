@@ -1,13 +1,16 @@
 class_name SessionReset
 ##
-## 清除运行时持久化数据（记忆、关系）
+## 清除运行时持久化数据（记忆、关系、世界存档）
 ##
+
+const SaveGameScript = preload("res://scripts/world/save_game.gd")
 
 
 static func wipe_persisted_agent_data() -> void:
 	_clear_dir_files(Config.repo_root().path_join("data/memory"))
 	_clear_dir_files(Config.repo_root().path_join("data/relationships"))
 	_clear_dir_files(Config.repo_root().path_join("data/goals"))
+	SaveGameScript.wipe()
 
 
 static func _clear_dir_files(dir_path: String) -> void:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Wipe runtime game state (memory + relationships). Same as in-game Ctrl+R data wipe.
+"""Wipe runtime game state (memory + relationships + world save). Same as in-game Ctrl+R data wipe.
 
 Usage:
-  python tools/reset_game.py           # memory + relationships
+  python tools/reset_game.py           # memory + relationships + goals + world save
   python tools/reset_game.py --logs    # also delete data/logs/*
 """
 from __future__ import annotations
@@ -27,6 +27,10 @@ def wipe_json_in(dir_name: str) -> int:
         removed += 1
         print(f"removed {path}")
     return removed
+
+
+def wipe_saves() -> int:
+    return wipe_json_in("saves")
 
 
 def wipe_logs() -> int:
@@ -54,10 +58,14 @@ def main() -> int:
     mem = wipe_json_in("memory")
     rel = wipe_json_in("relationships")
     goals = wipe_json_in("goals")
+    saves = wipe_saves()
     logs = wipe_logs() if args.logs else 0
 
     print()
-    print(f"Reset complete: memory={mem}, relationships={rel}, goals={goals}, log_files={logs}")
+    print(
+        f"Reset complete: memory={mem}, relationships={rel}, goals={goals}, "
+        f"saves={saves}, log_files={logs}"
+    )
     print("Start Godot and press F5 — agents spawn fresh (F3 for agent mode).")
     if not args.logs:
         print("Logs kept. Use --logs to wipe session history too.")

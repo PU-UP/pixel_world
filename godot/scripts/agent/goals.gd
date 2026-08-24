@@ -45,6 +45,12 @@ func set_long_term(text: String) -> void:
 	_save()
 
 
+func apply_save(current: String, long_term: String) -> void:
+	current_goal = current.strip_edges()
+	long_term_goal = long_term.strip_edges()
+	_save()
+
+
 func format_for_prompt() -> String:
 	var parts: PackedStringArray = PackedStringArray()
 	if not long_term_goal.is_empty():

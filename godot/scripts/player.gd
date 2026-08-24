@@ -156,6 +156,41 @@ func _rebuild_sprite() -> void:
 	if has_node("Sprite2D"):
 		$Sprite2D.texture = tex
 
+func capture_save() -> Dictionary:
+	var tile: Vector2i = get_tile_position()
+	return {
+		"id": str(agent_id),
+		"tile": [tile.x, tile.y],
+		"inventory": inventory.duplicate(),
+		"exploration": exploration.to_dict(),
+	}
+
+
+func apply_save(row: Dictionary, restore_exploration: bool = true) -> void:
+	clear_action_queue()
+	var tile_arr: Array = row.get("tile", [])
+	var tile := get_tile_position()
+	if tile_arr.size() >= 2:
+		tile = Vector2i(int(tile_arr[0]), int(tile_arr[1]))
+	if _world != null and not _world.is_walkable_tile(tile):
+		tile = _find_nearest_walkable_tile(tile)
+	global_position = Vector2(tile.x * TILE_SIZE + TILE_SIZE * 0.5, tile.y * TILE_SIZE + TILE_SIZE * 0.5)
+	_last_position = global_position
+	inventory.clear()
+	for it in row.get("inventory", []):
+		var item_id: String = str(it).strip_edges()
+		if not item_id.is_empty():
+			inventory.append(item_id)
+	if restore_exploration:
+		var expl: Variant = row.get("exploration", {})
+		if typeof(expl) == TYPE_DICTIONARY:
+			exploration.from_dict(expl)
+	_last_observation_tick = -1
+	if _world != null:
+		var now: int = _clock.current_tick() if _clock != null else 0
+		exploration.update_observer(get_tile_position(), observation_radius_tiles, _world, now)
+
+
 func bind_world(world) -> void:
 	_world = world
 	if _world != null:

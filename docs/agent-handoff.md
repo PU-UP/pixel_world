@@ -5,7 +5,7 @@
 
 ---
 
-## 1. 当前版本快照（v2.1）
+## 1. 当前版本快照（v2.2）
 
 | 项 | 说明 |
 |---|---|
@@ -14,6 +14,14 @@
 | **Agent** | 5 个 LLM agent，MiniMax function calling |
 | **观测** | HUD + 全员侧栏 + `data/logs/` + `tools/digest_session.py`（**无局内回放 UI**） |
 | **视角** | 默认上帝全图；G 切换跟随迷雾；跟随仅 VISIBLE 显示其他 agent/物品 |
+| **续局** | `data/saves/world.json`；关游戏再开接续世界。Ctrl+R 开新局 |
+
+### v2.2 已交付
+
+- 关闭窗口 / Esc 写世界存档；每 N tick 自动存（`config/runtime.yaml` → `save`）
+- 读档恢复 tick、地面物品、事件进度、agent 位置/背包/迷雾快照、目标、剩余计划、性格漂移、选中角色、上帝/跟随
+- 不恢复进行中的行走路径与 inflight LLM（读档后 idle 在存档格）
+- Ctrl+R 与 `python tools/reset_game.py` 同时清除记忆/关系/目标/世界存档
 
 ### v2.1 已交付
 
@@ -26,10 +34,6 @@
 
 - 战争迷雾三层、目标系统、`SHARE_MAP`、P8.4 决策硬化
 
-### v1.1 已交付（摘要）
-
-- 决策 gate、`resolve_move_goal`、动态 tool enum、日志 digest、token 节流
-
 ---
 
 ## 2. 代码地图（高频改动点）
@@ -37,24 +41,27 @@
 ```
 config/           world.yaml agents.yaml runtime.yaml llm.yaml
 godot/scripts/
-  main.gd         入口、HUD、G 上帝视角、VISIBLE 裁剪
-  player.gd       移动超时、WAIT、exploration 快照
+  main.gd         入口、HUD、G 上帝视角、VISIBLE 裁剪、读档/存档
+  player.gd       移动超时、WAIT、exploration 快照、位置/背包序列化
   agent/
     decision.gd   LLM 决策 + gate + 邻格会合 redirect
     actions.gd    原语 schema / validate_in_context
     comm.gd       SAY/GIVE/SHARE_MAP 路由
     goals.gd      目标持久化
-    coordinator.gd  agent 生命周期
+    coordinator.gd  agent 生命周期 + capture/apply_world
   world/
     world.gd      地图生成与物品可见性过滤
     exploration_map.gd  探索快照 {terrain, tick}
+    save_game.gd  单槽 world.json
+    clock.gd      restore_tick（不补发错过的 tick）
+    state.gd / events.gd  地面物品与事件进度
   ui/
     fog_of_war.gd 黑 / 快照灰 / 视野亮
     minimap.gd    小地图迷雾
     camera_rig.gd 跟随 / 上帝缩放
 tools/
   digest_session.py summarize_session.py reset_game.py
-data/             运行时，不进 git
+data/             运行时，不进 git（含 saves/）
 ```
 
 ---
@@ -64,7 +71,7 @@ data/             运行时，不进 git
 - P2.3 世界改动后的过时快照刷新
 - tileset / 向量记忆 / 日夜 / 视线遮挡
 
-验收：启动即全图；G 后跟随仅见视野内同伴；三人靠近后能继续决策（日志可有 `movement_stuck` 但应恢复）。
+验收 v2.2：已跑通。关游戏再开 tick/坐标/迷雾/地上物品接续；Ctrl+R 后再开从出生点新局。
 
 ---
 
@@ -77,7 +84,7 @@ P2.3（世界会变之后）→ 跑局看 anomalies / tokens。不要做局内�
 ## 5. 验收与运维命令
 
 ```powershell
-# 清运行时（含 goals）
+# 清运行时（含 goals + 世界存档）
 python tools/reset_game.py
 python tools/reset_game.py --logs
 
@@ -96,4 +103,4 @@ python tools/digest_session.py data/logs/<session>.jsonl
 
 ---
 
-_最后更新：v2.1 观察者视角 + 移动语义。_
+_最后更新：v2.2 世界续局。_

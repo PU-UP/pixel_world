@@ -18,6 +18,11 @@ control:
 observer:
   default_god: true
 
+save:
+  enabled: true
+  autosave_ticks: 25
+  filename: world.json
+
 movement:
   stuck_abort_s: 1.5
   stuck_min_displacement_px: 2.0

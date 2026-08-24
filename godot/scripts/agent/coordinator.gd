@@ -17,6 +17,7 @@ const CommRouterScript = preload("res://scripts/agent/comm.gd")
 const AgentGoalsScript = preload("res://scripts/agent/goals.gd")
 const AgentScene = preload("res://scenes/entities/Agent.tscn")
 const SessionResetScript = preload("res://scripts/session_reset.gd")
+const SaveGameScript = preload("res://scripts/world/save_game.gd")
 
 var records: Array = []
 var comm: CommRouterScript = null
@@ -107,6 +108,78 @@ func reset_world(agent_mode: bool = false) -> void:
 	_spawn_agents()
 	set_agent_mode(agent_mode)
 	roster_changed.emit()
+
+
+func capture_world(extra: Dictionary = {}) -> Dictionary:
+	var agents: Array = []
+	for rec in records:
+		var player: PlayerScript = rec["player"]
+		var row: Dictionary = player.capture_save()
+		row["trait_drift"] = rec["persona"].trait_drift.duplicate(true)
+		row["current_goal"] = rec["goals"].current_goal
+		row["long_term_goal"] = rec["goals"].long_term_goal
+		row["plan"] = rec["planning"].capture_save()
+		agents.append(row)
+	var payload: Dictionary = {
+		"tick": _clock.current_tick() if _clock != null else 0,
+		"map_width": _world.MAP_WIDTH if _world != null else 0,
+		"map_height": _world.MAP_HEIGHT if _world != null else 0,
+		"ground_items": _world.state.capture_ground() if _world != null and _world.state != null else [],
+		"events": _world.events.capture_save() if _world != null and _world.events != null else {},
+		"selected_index": selected_index,
+		"agents": agents,
+	}
+	for k in extra.keys():
+		payload[k] = extra[k]
+	return payload
+
+
+func apply_world(data: Dictionary) -> bool:
+	if data.is_empty() or _world == null or _clock == null:
+		return false
+	var version: int = int(data.get("version", 0))
+	if version > SaveGameScript.VERSION:
+		push_warning("[SaveGame] unsupported version %d" % version)
+		return false
+	var mw: int = int(data.get("map_width", 0))
+	var mh: int = int(data.get("map_height", 0))
+	if mw != _world.MAP_WIDTH or mh != _world.MAP_HEIGHT:
+		push_warning("[SaveGame] map size mismatch (%dx%d vs %dx%d), ignoring world save" % [
+			mw, mh, _world.MAP_WIDTH, _world.MAP_HEIGHT,
+		])
+		return false
+	_clock.restore_tick(int(data.get("tick", 0)))
+	var ground: Variant = data.get("ground_items", [])
+	_world.state.restore_ground(ground if typeof(ground) == TYPE_ARRAY else [])
+	var events_data: Variant = data.get("events", {})
+	_world.events.restore_save(events_data if typeof(events_data) == TYPE_DICTIONARY else {})
+	var agents_raw: Variant = data.get("agents", [])
+	if typeof(agents_raw) != TYPE_ARRAY:
+		agents_raw = []
+	for row_raw in agents_raw:
+		if typeof(row_raw) != TYPE_DICTIONARY:
+			continue
+		var row: Dictionary = row_raw
+		var rec: Dictionary = _find_record(str(row.get("id", "")))
+		if rec.is_empty():
+			continue
+		rec["player"].apply_save(row)
+		rec["persona"].trait_drift = _coerce_float_dict(row.get("trait_drift", {}))
+		rec["goals"].apply_save(str(row.get("current_goal", "")), str(row.get("long_term_goal", "")))
+		var plan: Variant = row.get("plan", {})
+		if typeof(plan) == TYPE_DICTIONARY:
+			rec["planning"].restore_save(plan)
+	select_index(int(data.get("selected_index", 0)))
+	return true
+
+
+func _coerce_float_dict(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return out
+	for k in raw.keys():
+		out[str(k)] = float(raw[k])
+	return out
 
 
 func _destroy_runtime() -> void:

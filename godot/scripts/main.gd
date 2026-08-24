@@ -15,6 +15,7 @@ const MinimapScript = preload("res://scripts/ui/minimap.gd")
 const CameraRigScript = preload("res://scripts/ui/camera_rig.gd")
 const FogOfWarScript = preload("res://scripts/ui/fog_of_war.gd")
 const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
+const SaveGameScript = preload("res://scripts/world/save_game.gd")
 
 enum ControlMode { MANUAL, AGENT }
 
@@ -81,9 +82,18 @@ func _ready() -> void:
 	_fog.setup(_world)
 	_camera.set_world_center(_world.world_size() * 0.5)
 	_god_view = Config.observer_default_god()
-	_set_control_mode(_control_mode_from_config())
+	var loaded_control: String = _try_load_save()
+	if loaded_control == "agent":
+		_set_control_mode(ControlMode.AGENT)
+	elif loaded_control == "manual":
+		_set_control_mode(ControlMode.MANUAL)
+	else:
+		_set_control_mode(_control_mode_from_config())
 	_hud_status.gui_input.connect(_on_status_label_gui_input)
 	_apply_observe_details_visibility()
+	if not _clock.tick.is_connected(_on_clock_save_tick):
+		_clock.tick.connect(_on_clock_save_tick)
+	get_tree().set_auto_accept_quit(false)
 	if _god_view:
 		_camera.fit_world(_world.world_size())
 	_update_view_mode()
@@ -424,6 +434,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _relation_visible:
 			_update_relation_hud()
 	elif event.is_action_pressed("quit"):
+		_save_world()
 		_logger.write_session_summary({"exit": "user_quit"})
 		get_tree().quit()
 	elif event.is_action_pressed("reset_world"):
@@ -466,6 +477,39 @@ func _try_step_input(agent: PlayerScript, delta: Vector2i) -> void:
 	if agent.is_busy():
 		return
 	agent.enqueue_move_to_tile(agent.get_tile_position() + delta)
+
+
+func _try_load_save() -> String:
+	var data: Dictionary = SaveGameScript.read()
+	if data.is_empty():
+		return ""
+	if not _coordinator.apply_world(data):
+		return ""
+	if data.has("god_view"):
+		_god_view = bool(data.get("god_view", true))
+	return str(data.get("control_mode", "")).strip_edges()
+
+
+func _on_clock_save_tick(tick: int) -> void:
+	var interval: int = SaveGameScript.autosave_ticks()
+	if interval <= 0:
+		return
+	if tick % interval == 0:
+		_save_world()
+
+
+func _save_world() -> void:
+	SaveGameScript.write(_coordinator.capture_world({
+		"god_view": _god_view,
+		"control_mode": "agent" if _control_mode == ControlMode.AGENT else "manual",
+	}))
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_world()
+		_logger.write_session_summary({"exit": "window_close"})
+		get_tree().quit()
 
 
 func _reset_world() -> void:

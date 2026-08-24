@@ -75,6 +75,28 @@ func get_last_plan_text() -> String:
 	return _last_plan_text
 
 
+func capture_save() -> Dictionary:
+	var steps: Array = []
+	for s in _steps:
+		steps.append(str(s))
+	return {
+		"steps": steps,
+		"step_index": _step_index,
+		"ticks_since_plan": _ticks_since_plan,
+		"last_plan_text": _last_plan_text,
+	}
+
+
+func restore_save(data: Dictionary) -> void:
+	_steps.clear()
+	for s in data.get("steps", []):
+		_steps.append(str(s))
+	_step_index = clampi(int(data.get("step_index", 0)), 0, _steps.size())
+	_ticks_since_plan = maxi(0, int(data.get("ticks_since_plan", 0)))
+	_last_plan_text = str(data.get("last_plan_text", ""))
+	_busy = false
+
+
 func advance_step() -> void:
 	if _step_index < _steps.size():
 		_step_index += 1

@@ -83,6 +83,40 @@ func items_near(tile: Vector2i, radius: int) -> Array:
 	return out
 
 
+func capture_ground() -> Array:
+	var out: Array = []
+	for item in all_ground_items():
+		var tile: Vector2i = item.get("tile", Vector2i.ZERO)
+		out.append({
+			"item_id": str(item.get("item_id", "")),
+			"display_name": str(item.get("display_name", "")),
+			"tile": [tile.x, tile.y],
+		})
+	return out
+
+
+func restore_ground(items: Array) -> void:
+	_ground.clear()
+	for raw in items:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var item: Dictionary = raw
+		var tile_arr: Array = item.get("tile", [])
+		if tile_arr.size() < 2:
+			continue
+		var tile := Vector2i(int(tile_arr[0]), int(tile_arr[1]))
+		var item_id: String = str(item.get("item_id", "")).strip_edges()
+		if item_id.is_empty():
+			continue
+		if _world != null and not _world.is_walkable_tile(tile):
+			continue
+		_ground[_tile_key(tile)] = {
+			"item_id": item_id,
+			"display_name": str(item.get("display_name", item_id)),
+		}
+	ground_item_changed.emit()
+
+
 func all_ground_items() -> Array:
 	var out: Array = []
 	for key in _ground.keys():

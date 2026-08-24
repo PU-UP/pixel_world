@@ -4,6 +4,14 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.2
+
+关闭游戏再开会接续同一局：时钟、角色位置、迷雾、地面物品、背包、事件进度、观察者视角。
+
+- **存档** — `data/saves/world.json`（退出时写；默认每 25 tick 自动存）
+- **新局** — Ctrl+R 或 `python tools/reset_game.py` 清除记忆/关系/目标/世界存档
+- 记忆与关系仍在 `data/memory/`、`data/relationships/`，与世界存档一起构成完整续局
+
 ## v2.0
 
 在 v1.1 观测与决策优化之上，新增地图探索、目标与上帝视角。
@@ -31,7 +39,7 @@ P8 观测与决策硬化：日志 digest、action gate、MOVE 吸附、token 节
 - **世界交互** — 物品拾取/丢弃/使用/给予，区域事件，小地图
 - **观测与日志** — 实时 HUD（观察 / 决策 / 记忆 / 关系），`data/logs/` 会话记录
 
-未实现：`EMOTE` / `SLEEP` / `WAIT`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
+未实现：`EMOTE` / `SLEEP`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
 
 **v2.0 验收**：[docs/v2.0-acceptance.md](./docs/v2.0-acceptance.md) · **协作者交接**：[docs/agent-handoff.md](./docs/agent-handoff.md)
 
@@ -78,7 +86,7 @@ GUT 单测见 [`docs/testing-setup.md`](./docs/testing-setup.md)。
 | Tab | 切换 HUD 焦点 agent（上帝模式下不关全图） |
 | F4 / F5 / F6 | 记忆 / 关系+计划 / 小地图 |
 | G | 上帝视角（默认全图）↔ 跟随选中 agent 的迷雾 |
-| Ctrl+R | 重置世界 |
+| Ctrl+R | 重置世界（开新局，清除存档与记忆） |
 | ` | 隐藏 HUD |
 
 ## 配置
@@ -91,7 +99,7 @@ GUT 单测见 [`docs/testing-setup.md`](./docs/testing-setup.md)。
 | `config/llm.yaml` | 模型、温度、超时 |
 | `.env` | API Key（覆盖 yaml 中的 base_url / model） |
 
-运行时数据：`data/logs/`、`data/memory/`、`data/relationships/`（不进 git）。
+运行时数据：`data/logs/`、`data/memory/`、`data/relationships/`、`data/goals/`、`data/saves/`（不进 git）。
 
 换机部署：拷贝仓库 + `.env`；若要延续会话，一并拷贝 `data/`。
 

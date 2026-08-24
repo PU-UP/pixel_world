@@ -39,6 +39,11 @@ func reset() -> void:
 	paused = false
 
 
+func restore_tick(tick: int) -> void:
+	_tick_index = maxi(0, tick)
+	_accumulator = 0.0
+
+
 # ---- P1.5: 单步 ----
 func tick_once() -> void:
 	# 无论 paused 与否都推进一 tick(由调用方决定何时用)

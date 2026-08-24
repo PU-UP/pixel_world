@@ -71,5 +71,34 @@ func snapshot_terrain(x: int, y: int) -> int:
 	return int(entry.get("terrain", -1))
 
 
+func to_dict() -> Dictionary:
+	var explored: Dictionary = {}
+	for key in _explored.keys():
+		var entry: Variant = _explored[key]
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		explored[str(key)] = {
+			"terrain": int(entry.get("terrain", 0)),
+			"tick": int(entry.get("tick", 0)),
+		}
+	return {"explored": explored}
+
+
+func from_dict(data: Dictionary) -> void:
+	_explored.clear()
+	_visible.clear()
+	var incoming: Variant = data.get("explored", {})
+	if typeof(incoming) != TYPE_DICTIONARY:
+		return
+	for key in incoming.keys():
+		var entry: Variant = incoming[key]
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		_explored[str(key)] = {
+			"terrain": int(entry.get("terrain", 0)),
+			"tick": int(entry.get("tick", 0)),
+		}
+
+
 static func _key(x: int, y: int) -> String:
 	return "%d,%d" % [x, y]

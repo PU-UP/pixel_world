@@ -90,6 +90,10 @@ func observer_default_god() -> bool:
 	return bool(runtime.get("observer", {}).get("default_god", true))
 
 
+func save_cfg() -> Dictionary:
+	return runtime.get("save", {})
+
+
 func movement_cfg() -> Dictionary:
 	return runtime.get("movement", {})
 
