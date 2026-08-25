@@ -130,6 +130,18 @@ func exploration_cfg() -> Dictionary:
 	return runtime.get("exploration", {})
 
 
+func exploration_stale_overlay() -> bool:
+	return bool(exploration_cfg().get("stale_overlay", true))
+
+
+func exploration_stale_tint() -> Color:
+	var raw: Variant = exploration_cfg().get("stale_tint", [0.85, 0.12, 0.62, 0.55])
+	if typeof(raw) != TYPE_ARRAY or raw.size() < 3:
+		return Color(0.85, 0.12, 0.62, 0.55)
+	var a: float = float(raw[3]) if raw.size() >= 4 else 0.55
+	return Color(float(raw[0]), float(raw[1]), float(raw[2]), a)
+
+
 func agent_config() -> Dictionary:
 	var list: Array = all_agents()
 	if list.is_empty():

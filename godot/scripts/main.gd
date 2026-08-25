@@ -57,6 +57,10 @@ var _control_mode: int = ControlMode.MANUAL
 var _observe_details_visible: bool = true
 var _god_view: bool = true
 var _continued: bool = false
+var _stale_count: int = 0
+var _stale_tick: int = -1
+var _stale_expl_rev: int = -1
+var _stale_tile_rev: int = -1
 var _fog: FogOfWarLayer = null
 var _day_modulate: CanvasModulate = null
 
@@ -171,10 +175,34 @@ func _observer_rules_label() -> String:
 		parts.append("光圈")
 	elif not _god_view:
 		parts.append("跟随迷雾")
+		if Config.exploration_stale_overlay():
+			parts.append("过时灰")
 	parts.append("续局" if _continued else "新局")
 	if _clock != null and _clock.time_enabled():
 		parts.append(_clock.format_phase_clock())
+	var agent := _current_agent()
+	if agent != null and Config.exploration_stale_overlay():
+		var n: int = _selected_stale_count(agent)
+		if n > 0:
+			parts.append("过时%d" % n)
 	return "规则:%s" % "·".join(parts)
+
+
+func _selected_stale_count(agent: PlayerScript) -> int:
+	var tick: int = _clock.current_tick() if _clock != null else 0
+	var expl_rev: int = 0
+	var tiles_rev: int = 0
+	if agent.exploration != null:
+		expl_rev = int(agent.exploration.revision)
+	if _world != null:
+		tiles_rev = int(_world.tile_revision)
+	if tick == _stale_tick and expl_rev == _stale_expl_rev and tiles_rev == _stale_tile_rev:
+		return _stale_count
+	_stale_tick = tick
+	_stale_expl_rev = expl_rev
+	_stale_tile_rev = tiles_rev
+	_stale_count = agent.exploration.stale_tiles(_world).size() if agent.exploration != null else 0
+	return _stale_count
 
 
 func _log_observer_state() -> void:

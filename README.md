@@ -4,6 +4,10 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.6
+
+世界可改瓦片（事件 `tile_changes`）。跟随迷雾的灰色仍是探索时的地形快照；与当前世界不符时叠一层品红，表示记忆过时。上帝视角看 live 地形。
+
 ## v2.5
 
 日夜循环由 tick 派生；画面染色、状态栏时段进度条、夜间视野缩小。`SLEEP` 睡到指定 tick（通常是下次黎明）；未醒完关游戏，再开会接着睡。

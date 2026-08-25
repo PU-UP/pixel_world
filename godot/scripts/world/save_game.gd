@@ -1,7 +1,7 @@
 class_name SaveGame
 ##
 ## 世界续局 — data/saves/{filename}（默认 world.json）
-## 记忆/关系仍走各自 JSON；本文件存 tick、位置、迷雾、物品、观察者偏好。
+## 记忆/关系仍走各自 JSON；本文件存 tick、位置、迷雾、物品、地形覆盖、观察者偏好。
 ##
 
 const VERSION: int = 1

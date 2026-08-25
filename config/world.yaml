@@ -96,3 +96,13 @@ events:
     duration_ticks: 10
     first_tick: 60
     regions: []
+  - id: windfall
+    text: "西林里几棵树被风吹倒，露出了草地。"
+    interval_ticks: 240
+    duration_ticks: 30
+    first_tick: 140
+    regions: [west_grove]
+    tile_changes:
+      count: 8
+      from: tree
+      to: grass

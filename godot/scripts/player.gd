@@ -315,8 +315,8 @@ func _physics_process(delta: float) -> void:
 	# ---- P1.5 观测/日志 hook ----
 	_refresh_observation_if_needed()
 	_maybe_log_position_change()
-
-	queue_redraw()  # debug 画路径
+	if _selected or _state == State.SLEEPING or (debug_show_path and not _current_path.is_empty()):
+		queue_redraw()
 
 func _draw() -> void:
 	if _selected:

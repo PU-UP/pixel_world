@@ -8,11 +8,17 @@ enum TileVis { UNEXPLORED, EXPLORED, VISIBLE }
 
 var _explored: Dictionary = {}  # "x,y" -> {terrain: int, tick: int}
 var _visible: Dictionary = {}
+var revision: int = 0
+
+
+func _bump() -> void:
+	revision += 1
 
 
 func reset(_map_w: int = 0, _map_h: int = 0) -> void:
 	_explored.clear()
 	_visible.clear()
+	_bump()
 
 
 func update_observer(center: Vector2i, radius: int, world = null, tick: int = 0) -> void:
@@ -32,21 +38,27 @@ func update_observer(center: Vector2i, radius: int, world = null, tick: int = 0)
 			if world != null:
 				terrain = int(world.tile_at_tile(Vector2i(tx, ty)))
 			_explored[key] = {"terrain": terrain, "tick": tick}
+	_bump()
 
 
 func merge_from(other: ExplorationMap) -> int:
 	if other == null:
 		return 0
 	var added: int = 0
+	var changed: bool = false
 	for key in other._explored.keys():
 		var incoming: Dictionary = other._explored[key]
 		if not _explored.has(key):
 			added += 1
 			_explored[key] = incoming.duplicate(true)
+			changed = true
 			continue
 		var mine: Dictionary = _explored[key]
 		if int(incoming.get("tick", 0)) > int(mine.get("tick", 0)):
 			_explored[key] = incoming.duplicate(true)
+			changed = true
+	if changed:
+		_bump()
 	return added
 
 
@@ -78,6 +90,32 @@ func snapshot_terrain(x: int, y: int) -> int:
 	return int(entry.get("terrain", -1))
 
 
+func is_stale(x: int, y: int, world) -> bool:
+	if world == null:
+		return false
+	if get_state(x, y) != TileVis.EXPLORED:
+		return false
+	var snap: int = snapshot_terrain(x, y)
+	if snap < 0:
+		return false
+	return snap != int(world.tile_at_tile(Vector2i(x, y)))
+
+
+func stale_tiles(world) -> Array:
+	var out: Array = []
+	if world == null:
+		return out
+	for key in _explored.keys():
+		var parts: PackedStringArray = str(key).split(",")
+		if parts.size() < 2:
+			continue
+		var x: int = int(parts[0])
+		var y: int = int(parts[1])
+		if is_stale(x, y, world):
+			out.append(Vector2i(x, y))
+	return out
+
+
 func to_dict() -> Dictionary:
 	var explored: Dictionary = {}
 	for key in _explored.keys():
@@ -105,6 +143,7 @@ func from_dict(data: Dictionary) -> void:
 			"terrain": int(entry.get("terrain", 0)),
 			"tick": int(entry.get("tick", 0)),
 		}
+	_bump()
 
 
 static func _key(x: int, y: int) -> String:

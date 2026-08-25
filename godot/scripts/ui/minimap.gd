@@ -14,6 +14,7 @@ var _world: GameWorld = null
 var _agents: Array = []
 var _god_mode: bool = false
 var _exploration: ExplorationMap = null
+var _expl_rev: int = -1
 
 const COLOR_FOG_UNEXP := Color(0.02, 0.02, 0.05, 0.92)
 const COLOR_FOG_EXPLORED := Color(0.12, 0.12, 0.16, 0.72)
@@ -33,12 +34,20 @@ func set_agents(agents: Array) -> void:
 
 
 func set_god_mode(on: bool) -> void:
+	if on == _god_mode:
+		return
 	_god_mode = on
 	queue_redraw()
 
 
 func set_exploration(exploration: ExplorationMap) -> void:
+	var rev: int = 0
+	if exploration != null:
+		rev = int(exploration.revision)
+	if exploration == _exploration and rev == _expl_rev:
+		return
 	_exploration = exploration
+	_expl_rev = rev
 	queue_redraw()
 
 
@@ -68,6 +77,8 @@ func _draw() -> void:
 			var c: Color = GameWorld.TILE_COLORS.get(t, Color.GRAY)
 			if fog_state == ExplorationMap.TileVis.EXPLORED:
 				c = c.darkened(0.45)
+				if Config.exploration_stale_overlay() and _exploration.is_stale(x, y, _world):
+					c = c.lerp(Config.exploration_stale_tint(), 0.55)
 			draw_rect(Rect2(x * sx, y * sy, maxf(sx, 1.0), maxf(sy, 1.0)), c)
 	if _world.state != null and (_god_mode or _exploration != null):
 		for item in _world.state.all_ground_items():

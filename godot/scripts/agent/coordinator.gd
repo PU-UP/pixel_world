@@ -97,6 +97,7 @@ func reset_world(agent_mode: bool = false) -> void:
 	_destroy_runtime()
 	SessionResetScript.wipe_persisted_agent_data()
 	_clock.reset()
+	_world.reset_tile_overrides()
 	_world.state.reset()
 	_world.events.reset()
 	_co_presence_counter = 0
@@ -125,6 +126,7 @@ func capture_world(extra: Dictionary = {}) -> Dictionary:
 		"map_width": _world.MAP_WIDTH if _world != null else 0,
 		"map_height": _world.MAP_HEIGHT if _world != null else 0,
 		"ground_items": _world.state.capture_ground() if _world != null and _world.state != null else [],
+		"tile_overrides": _world.capture_tile_overrides() if _world != null else {},
 		"events": _world.events.capture_save() if _world != null and _world.events != null else {},
 		"selected_index": selected_index,
 		"agents": agents,
@@ -149,6 +151,8 @@ func apply_world(data: Dictionary) -> bool:
 		])
 		return false
 	_clock.restore_tick(int(data.get("tick", 0)))
+	var tiles_raw: Variant = data.get("tile_overrides", {})
+	_world.restore_tile_overrides(tiles_raw if typeof(tiles_raw) == TYPE_DICTIONARY else {})
 	var ground: Variant = data.get("ground_items", [])
 	_world.state.restore_ground(ground if typeof(ground) == TYPE_ARRAY else [])
 	var events_data: Variant = data.get("events", {})
@@ -217,6 +221,7 @@ func _spawn_agents() -> void:
 		player.bind_comm(comm)
 		player.bind_observability(_logger)
 		player.apply_agent_config(cfg)
+		_world.register_exploration(player.exploration)
 		if cfg.has("color") and typeof(cfg["color"]) == TYPE_ARRAY and cfg["color"].size() >= 3:
 			var c: Array = cfg["color"]
 			player.set_body_color(Color(float(c[0]), float(c[1]), float(c[2])))

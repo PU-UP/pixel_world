@@ -23,11 +23,15 @@ const TILE_COLORS := {
 }
 
 var tiles: Array = []   # 二维 [y][x] -> Tile
+var _tile_overrides: Dictionary = {}  # "x,y" -> Tile
+var _exploration_maps: Array = []
 var state: WorldStateScript = null
 var events: WorldEventsScript = null
 var rng: RandomNumberGenerator
 var _item_filter = null
 var _god_items: bool = true
+var _filter_rev: int = -1
+var tile_revision: int = 0
 var _los_block_ids_cache: Dictionary = {}
 
 func _ready() -> void:
@@ -60,9 +64,7 @@ func world_size() -> Vector2:
 func tile_at(world_pos: Vector2) -> int:
 	var x := int(floor(world_pos.x / TILE_SIZE))
 	var y := int(floor(world_pos.y / TILE_SIZE))
-	if x < 0 or y < 0 or x >= MAP_WIDTH or y >= MAP_HEIGHT:
-		return Tile.WATER
-	return tiles[y][x]
+	return tile_at_tile(Vector2i(x, y))
 
 func is_walkable(world_pos: Vector2) -> bool:
 	var t := tile_at(world_pos)
@@ -72,19 +74,153 @@ func is_walkable(world_pos: Vector2) -> bool:
 func is_walkable_tile(tile: Vector2i) -> bool:
 	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
 		return false
-	var t: int = tiles[tile.y][tile.x]
+	var t: int = tile_at_tile(tile)
 	return t == Tile.GRASS or t == Tile.SAND
 
 
 func set_view_filter(exploration, god_mode: bool) -> void:
+	var rev: int = 0
+	if exploration != null:
+		rev = int(exploration.revision)
+	if exploration == _item_filter and god_mode == _god_items and rev == _filter_rev:
+		return
 	_item_filter = exploration
 	_god_items = god_mode
+	_filter_rev = rev
 	queue_redraw()
 
 func tile_at_tile(tile: Vector2i) -> int:
 	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
 		return Tile.WATER
+	var key: String = _tile_key(tile)
+	if _tile_overrides.has(key):
+		return int(_tile_overrides[key])
 	return tiles[tile.y][tile.x]
+
+
+func set_tile(tile: Vector2i, terrain: int, redraw: bool = true) -> bool:
+	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
+		return false
+	if terrain < Tile.GRASS or terrain > Tile.MOUNTAIN:
+		return false
+	if tile_at_tile(tile) == terrain:
+		return false
+	_tile_overrides[_tile_key(tile)] = terrain
+	tile_revision += 1
+	if redraw:
+		queue_redraw()
+	return true
+
+
+func reset_tile_overrides() -> void:
+	_tile_overrides.clear()
+	_exploration_maps.clear()
+	tile_revision += 1
+	queue_redraw()
+
+
+func capture_tile_overrides() -> Dictionary:
+	var out: Dictionary = {}
+	for key in _tile_overrides.keys():
+		out[str(key)] = int(_tile_overrides[key])
+	return out
+
+
+func restore_tile_overrides(data: Dictionary) -> void:
+	_tile_overrides.clear()
+	for key in data.keys():
+		_tile_overrides[str(key)] = int(data[key])
+	tile_revision += 1
+	queue_redraw()
+
+
+func apply_region_tile_change(region_ids: Array, from_id: int, to_id: int, count: int) -> Array:
+	var changed: Array = []
+	if count <= 0 or from_id < 0 or to_id < 0:
+		return changed
+	var filter: Dictionary = {}
+	for rid in region_ids:
+		var s: String = str(rid)
+		if not s.is_empty():
+			filter[s] = true
+	var origin: Vector2i = _region_center(region_ids)
+	var candidates: Array = []
+	for y in MAP_HEIGHT:
+		for x in MAP_WIDTH:
+			var cell := Vector2i(x, y)
+			if tile_at_tile(cell) != from_id:
+				continue
+			if not filter.is_empty():
+				var rid: String = state.region_id_at(cell) if state != null else ""
+				if not filter.has(rid):
+					continue
+			var remembered: int = 1
+			if _any_snapshot_is(cell, from_id):
+				remembered = 0
+			var dist: int = absi(cell.x - origin.x) + absi(cell.y - origin.y)
+			candidates.append({"tile": cell, "remembered": remembered, "dist": dist})
+	candidates.sort_custom(func(a, b):
+		if int(a["remembered"]) != int(b["remembered"]):
+			return int(a["remembered"]) < int(b["remembered"])
+		return int(a["dist"]) < int(b["dist"])
+	)
+	for row in candidates:
+		if changed.size() >= count:
+			break
+		var cell: Vector2i = row["tile"]
+		if set_tile(cell, to_id, false):
+			changed.append(cell)
+	if changed.size() > 0:
+		queue_redraw()
+	return changed
+
+
+func register_exploration(exploration) -> void:
+	if exploration == null:
+		return
+	if exploration in _exploration_maps:
+		return
+	_exploration_maps.append(exploration)
+
+
+func unregister_exploration(exploration) -> void:
+	_exploration_maps.erase(exploration)
+
+
+func _any_snapshot_is(tile: Vector2i, terrain: int) -> bool:
+	for exploration in _exploration_maps:
+		if exploration == null:
+			continue
+		if int(exploration.snapshot_terrain(tile.x, tile.y)) == terrain:
+			return true
+	return false
+
+
+func _region_center(region_ids: Array) -> Vector2i:
+	var want: String = ""
+	for rid in region_ids:
+		if not str(rid).is_empty():
+			want = str(rid)
+			break
+	if want.is_empty():
+		return Vector2i(int(MAP_WIDTH * 0.5), int(MAP_HEIGHT * 0.5))
+	for reg in Config.world_region_defs():
+		if typeof(reg) != TYPE_DICTIONARY:
+			continue
+		if str(reg.get("id", "")) != want:
+			continue
+		var c: Array = reg.get("center", [])
+		if c.size() >= 2:
+			return Vector2i(int(c[0]), int(c[1]))
+	return Vector2i(int(MAP_WIDTH * 0.5), int(MAP_HEIGHT * 0.5))
+
+
+func terrain_id_from_name(name: String) -> int:
+	return _tile_id_from_name(name)
+
+
+static func _tile_key(tile: Vector2i) -> String:
+	return "%d,%d" % [tile.x, tile.y]
 
 
 func blocks_sight(tile: Vector2i) -> bool:
@@ -206,7 +342,7 @@ func _draw() -> void:
 	for y in MAP_HEIGHT:
 		for x in MAP_WIDTH:
 			var rect := Rect2(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-			draw_rect(rect, TILE_COLORS[tiles[y][x]])
+			draw_rect(rect, TILE_COLORS[tile_at_tile(Vector2i(x, y))])
 	_draw_ground_items()
 
 

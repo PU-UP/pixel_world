@@ -123,6 +123,13 @@ func _on_tick(tick: int) -> void:
 		var text: String = str(ev.get("text", ""))
 		if text.is_empty():
 			continue
+		var changed_tiles: Array = _apply_tile_changes(ev)
+		if changed_tiles.size() > 0:
+			var keys: PackedStringArray = PackedStringArray()
+			for cell in changed_tiles:
+				var t: Vector2i = cell
+				keys.append("%d,%d" % [t.x, t.y])
+			text = "%s（改%d格：%s）" % [text, changed_tiles.size(), ",".join(keys)]
 		_active.append({
 			"id": eid,
 			"text": text,
@@ -130,6 +137,27 @@ func _on_tick(tick: int) -> void:
 			"expires_tick": tick + duration,
 		})
 		event_fired.emit(eid, text, tick)
+		if changed_tiles.size() > 0 and _world != null:
+			_world.queue_redraw()
+
+
+func _apply_tile_changes(ev: Dictionary) -> Array:
+	if _world == null:
+		return []
+	var spec: Variant = ev.get("tile_changes", {})
+	if typeof(spec) != TYPE_DICTIONARY:
+		return []
+	var count: int = int(spec.get("count", 0))
+	if count <= 0:
+		return []
+	var from_id: int = _world.terrain_id_from_name(str(spec.get("from", "")))
+	var to_id: int = _world.terrain_id_from_name(str(spec.get("to", "")))
+	if from_id < 0 or to_id < 0:
+		return []
+	var regions: Array = []
+	for r in ev.get("regions", []):
+		regions.append(str(r))
+	return _world.apply_region_tile_change(regions, from_id, to_id, count)
 
 
 func _prune_expired(tick: int) -> void:

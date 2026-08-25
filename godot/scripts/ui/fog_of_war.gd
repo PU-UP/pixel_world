@@ -13,6 +13,8 @@ var _exploration: ExplorationMap = null
 var _god_mode: bool = false
 var _focus_center: Vector2i = Vector2i.ZERO
 var _focus_radius: int = 0
+var _expl_rev: int = -1
+var _tile_rev: int = -1
 
 const COLOR_UNEXPLORED := Color(0.02, 0.02, 0.05, 1.0)
 const COLOR_GOD_VISIBLE := Color(1.0, 0.92, 0.42, 0.22)
@@ -26,17 +28,31 @@ func setup(world: GameWorld) -> void:
 
 
 func set_exploration(exploration: ExplorationMap) -> void:
+	var rev: int = 0
+	var tiles_rev: int = 0
+	if exploration != null:
+		rev = int(exploration.revision)
+	if _world != null:
+		tiles_rev = int(_world.tile_revision)
+	if exploration == _exploration and rev == _expl_rev and tiles_rev == _tile_rev:
+		return
 	_exploration = exploration
+	_expl_rev = rev
+	_tile_rev = tiles_rev
 	queue_redraw()
 
 
 func set_vision_focus(center: Vector2i, radius: int) -> void:
+	if center == _focus_center and radius == _focus_radius:
+		return
 	_focus_center = center
 	_focus_radius = radius
 	queue_redraw()
 
 
 func set_god_mode(on: bool) -> void:
+	if on == _god_mode:
+		return
 	_god_mode = on
 	queue_redraw()
 
@@ -45,6 +61,7 @@ func _draw() -> void:
 	if _world == null:
 		return
 	if _god_mode:
+		_draw_god_stale()
 		_draw_god_vision()
 		return
 	if _exploration == null:
@@ -66,6 +83,20 @@ func _draw() -> void:
 				c = c.darkened(0.4)
 				c.a = 1.0
 				draw_rect(rect, c)
+				if Config.exploration_stale_overlay() and _exploration.is_stale(x, y, _world):
+					draw_rect(rect, Config.exploration_stale_tint())
+
+
+func _draw_god_stale() -> void:
+	if not Config.exploration_stale_overlay():
+		return
+	if _exploration == null or _world == null:
+		return
+	var ts: int = GameWorld.TILE_SIZE
+	var tint: Color = Config.exploration_stale_tint()
+	for cell in _exploration.stale_tiles(_world):
+		var t: Vector2i = cell
+		draw_rect(Rect2(t.x * ts, t.y * ts, ts, ts), tint)
 
 
 func _draw_god_vision() -> void:
