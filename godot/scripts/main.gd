@@ -159,23 +159,22 @@ func _control_mode_label() -> String:
 func _update_view_mode() -> void:
 	if _fog == null:
 		return
+	var agent := _current_agent()
+	if agent != null:
+		_fog.set_exploration(agent.exploration)
+		_fog.set_vision_focus(agent.get_tile_position(), agent.observation_radius_tiles)
 	if _god_view:
 		_fog.set_god_mode(true)
 		_camera.set_view_mode(CameraRigScript.ViewMode.GOD_MAP)
+		_world.set_view_filter(null, true)
 	else:
 		_fog.set_god_mode(false)
 		_camera.set_view_mode(CameraRigScript.ViewMode.FOLLOW_AGENT)
-		var agent := _current_agent()
 		if agent != null:
-			_fog.set_exploration(agent.exploration)
 			_world.set_view_filter(agent.exploration, false)
 	_minimap.set_god_mode(_god_view)
-	if not _god_view:
-		var sel := _current_agent()
-		if sel != null:
-			_minimap.set_exploration(sel.exploration)
-	else:
-		_world.set_view_filter(null, true)
+	if not _god_view and agent != null:
+		_minimap.set_exploration(agent.exploration)
 
 
 func _apply_entity_visibility() -> void:
@@ -234,7 +233,11 @@ func _update_hud() -> void:
 	var tok: int = int(_logger.stats().get("tokens_total", 0))
 	var roster: String = "%d/%d" % [_coordinator.selected_index + 1, _coordinator.spawn_count()]
 	var zoom_pct: int = int(round(_camera.zoom.x * 100.0))
-	var status_core := "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s  缩放:%d%%" % [
+	var selected: PlayerScript = _current_agent()
+	var vis_n := 0
+	if selected != null and selected.exploration != null:
+		vis_n = selected.exploration.visible_count()
+	var status_core := "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s  视野:%d  缩放:%d%%" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
@@ -242,13 +245,13 @@ func _update_hud() -> void:
 		llm_str,
 		tok,
 		roster,
+		vis_n,
 		zoom_pct,
 	]
 	if not _observe_details_visible:
 		_hud_status.text = "【点击展开】%s" % status_core
 		return
 	_hud_status.text = "【点击收起】%s" % status_core
-	var selected: PlayerScript = _current_agent()
 	if selected == null:
 		_hud_agent.text = "角色：（无）"
 		_hud_observation.text = "（无）"
@@ -271,6 +274,8 @@ func _update_hud() -> void:
 func _update_roster_hud() -> void:
 	if _hud_roster == null:
 		return
+	if _roster_header != null:
+		_roster_header.text = "全员 · 选中视野 可见/遮挡/超距"
 	var lines: PackedStringArray = PackedStringArray()
 	var observer := _current_agent()
 	for rec in _coordinator.records:
@@ -284,17 +289,7 @@ func _update_roster_hud() -> void:
 		var mark := " "
 		if p == observer:
 			mark = ">"
-		var vis := "亮"
-		if not _god_view and observer != null and observer.exploration != null and p != observer:
-			var st: int = observer.exploration.get_state(tile.x, tile.y)
-			if st == ExplorationMap.TileVis.VISIBLE:
-				vis = "亮"
-			elif st == ExplorationMap.TileVis.EXPLORED:
-				vis = "灰"
-			else:
-				vis = "黑"
-		elif _god_view:
-			vis = "全"
+		var vis := _roster_vis_label(observer, p, tile)
 		var goal := ""
 		if rec.has("goals"):
 			goal = str(rec["goals"].current_goal)
@@ -307,6 +302,23 @@ func _update_roster_hud() -> void:
 		if not goal.is_empty():
 			lines.append("  %s" % goal)
 	_hud_roster.text = "\n".join(lines) if lines.size() > 0 else "（无）"
+
+
+func _roster_vis_label(observer: PlayerScript, p: PlayerScript, tile: Vector2i) -> String:
+	if observer == null or observer.exploration == null:
+		return "?"
+	if p == observer:
+		return "自己"
+	var st: int = observer.exploration.get_state(tile.x, tile.y)
+	if st == ExplorationMap.TileVis.VISIBLE:
+		return "可见"
+	var r: int = observer.observation_radius_tiles
+	var ot: Vector2i = observer.get_tile_position()
+	var dx: int = tile.x - ot.x
+	var dy: int = tile.y - ot.y
+	if dx * dx + dy * dy <= r * r:
+		return "遮挡"
+	return "超距"
 
 
 func _update_memory_hud() -> void:

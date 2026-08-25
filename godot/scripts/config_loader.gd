@@ -90,6 +90,10 @@ func observer_default_god() -> bool:
 	return bool(runtime.get("observer", {}).get("default_god", true))
 
 
+func observer_god_vision_overlay() -> bool:
+	return bool(runtime.get("observer", {}).get("god_vision_overlay", true))
+
+
 func save_cfg() -> Dictionary:
 	return runtime.get("save", {})
 
@@ -119,6 +123,17 @@ func starting_agent_count() -> int:
 
 func audio_radius() -> int:
 	return int(runtime.get("agent", {}).get("audio_radius", 10))
+
+
+func perception_los_enabled() -> bool:
+	return bool(runtime.get("agent", {}).get("los", true))
+
+
+func perception_los_block_names() -> Array:
+	var raw: Variant = runtime.get("agent", {}).get("los_block", ["tree", "mountain"])
+	if typeof(raw) != TYPE_ARRAY:
+		return ["tree", "mountain"]
+	return raw
 
 
 func memory_cfg() -> Dictionary:

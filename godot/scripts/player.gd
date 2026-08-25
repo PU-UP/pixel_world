@@ -578,7 +578,9 @@ func _use_target_valid(on_target: String) -> bool:
 			get_tile_position(), on_target, observation_radius_tiles
 		)
 		if not found.is_empty():
-			return true
+			var item_tile: Vector2i = found.get("tile", Vector2i.ZERO)
+			if _world.has_line_of_sight(get_tile_position(), item_tile):
+				return true
 	return false
 
 
@@ -667,12 +669,15 @@ func _refresh_observation_if_needed() -> void:
 		region_name = _world.state.region_name_at(Vector2i(cx, cy))
 	var r: int = observation_radius_tiles
 	var counts: Dictionary = {}
+	var origin := Vector2i(cx, cy)
 	for dy in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			if dx * dx + dy * dy > r * r:
 				continue
 			var tx: int = cx + dx
 			var ty: int = cy + dy
+			if not _world.has_line_of_sight(origin, Vector2i(tx, ty)):
+				continue
 			var name: String = _tile_name(_world.tile_at(Vector2(tx * TILE_SIZE, ty * TILE_SIZE)))
 			counts[name] = counts.get(name, 0) + 1
 	var parts: PackedStringArray = []
@@ -692,6 +697,8 @@ func _refresh_observation_if_needed() -> void:
 	if _world != null and _world.state != null:
 		for item in _world.state.items_near(Vector2i(cx, cy), r):
 			var item_tile: Vector2i = item.get("tile", Vector2i.ZERO)
+			if not _world.has_line_of_sight(Vector2i(cx, cy), item_tile):
+				continue
 			item_parts.append("%s@(%d,%d)" % [str(item.get("item_id", "?")), item_tile.x, item_tile.y])
 	if item_parts.size() > 0:
 		_observation_text += " | 物品: " + ", ".join(item_parts)

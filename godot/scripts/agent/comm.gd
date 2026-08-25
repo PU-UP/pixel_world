@@ -25,12 +25,16 @@ func players_in_perception(observer: Player) -> Array:
 	var out: Array = []
 	var r: int = observer.observation_radius_tiles
 	var ot := observer.get_tile_position()
+	var world = observer.game_world()
 	for p in _players:
 		if p == observer:
 			continue
 		var pt: Vector2i = p.get_tile_position()
-		if _tile_distance(ot, pt) <= r:
-			out.append(p)
+		if _tile_distance(ot, pt) > r:
+			continue
+		if world != null and not world.has_line_of_sight(ot, pt):
+			continue
+		out.append(p)
 	return out
 
 

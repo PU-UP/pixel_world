@@ -28,6 +28,7 @@ var events: WorldEventsScript = null
 var rng: RandomNumberGenerator
 var _item_filter = null
 var _god_items: bool = true
+var _los_block_ids_cache: Dictionary = {}
 
 func _ready() -> void:
 	rng = RandomNumberGenerator.new()
@@ -84,6 +85,72 @@ func tile_at_tile(tile: Vector2i) -> int:
 	if tile.x < 0 or tile.y < 0 or tile.x >= MAP_WIDTH or tile.y >= MAP_HEIGHT:
 		return Tile.WATER
 	return tiles[tile.y][tile.x]
+
+
+func blocks_sight(tile: Vector2i) -> bool:
+	return _los_block_ids().has(tile_at_tile(tile))
+
+
+func has_line_of_sight(from: Vector2i, to: Vector2i) -> bool:
+	if not Config.perception_los_enabled():
+		return true
+	if from == to:
+		return true
+	var cells: Array = _trace_line(from, to)
+	for i in range(cells.size() - 1):
+		var cell: Vector2i = cells[i]
+		if cell == from:
+			continue
+		if blocks_sight(cell):
+			return false
+	return true
+
+
+func _los_block_ids() -> Dictionary:
+	if not _los_block_ids_cache.is_empty():
+		return _los_block_ids_cache
+	for raw in Config.perception_los_block_names():
+		var tid: int = _tile_id_from_name(str(raw))
+		if tid >= 0:
+			_los_block_ids_cache[tid] = true
+	return _los_block_ids_cache
+
+
+func _tile_id_from_name(name: String) -> int:
+	match name.strip_edges().to_lower():
+		"grass":
+			return Tile.GRASS
+		"sand":
+			return Tile.SAND
+		"water":
+			return Tile.WATER
+		"tree":
+			return Tile.TREE
+		"mountain":
+			return Tile.MOUNTAIN
+		_:
+			return -1
+
+
+func _trace_line(a: Vector2i, b: Vector2i) -> Array:
+	var cells: Array = [a]
+	var x: int = a.x
+	var y: int = a.y
+	var dx: int = absi(b.x - a.x)
+	var dy: int = absi(b.y - a.y)
+	var sx: int = 1 if a.x < b.x else -1
+	var sy: int = 1 if a.y < b.y else -1
+	var err: int = dx - dy
+	while x != b.x or y != b.y:
+		var e2: int = err * 2
+		if e2 > -dy:
+			err -= dy
+			x += sx
+		if e2 < dx:
+			err += dx
+			y += sy
+		cells.append(Vector2i(x, y))
+	return cells
 
 # ------------------------------------------------------------------
 # 程序化生成:粗略的"椭圆岛屿 + 中心山 + 海岸沙滩 + 边上海水"

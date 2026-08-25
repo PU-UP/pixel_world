@@ -5,7 +5,7 @@
 
 ---
 
-## 1. 当前版本快照（v2.2）
+## 1. 当前版本快照（v2.3）
 
 | 项 | 说明 |
 |---|---|
@@ -15,6 +15,14 @@
 | **观测** | HUD + 全员侧栏 + `data/logs/` + `tools/digest_session.py`（**无局内回放 UI**） |
 | **视角** | 默认上帝全图；G 切换跟随迷雾；跟随仅 VISIBLE 显示其他 agent/物品 |
 | **续局** | `data/saves/world.json`；关游戏再开接续世界。Ctrl+R 开新局 |
+| **感知** | 视野半径 + 树/山视线遮挡；SAY 仍按听觉半径 |
+
+### v2.3 已交付
+
+- 树、山挡住视线（`config/runtime.yaml` → `agent.los` / `los_block`）
+- 迷雾 VISIBLE、观察文本、同伴精灵、地面物品都走 LOS
+- 上帝视角用浅色标出 **Tab 选中角色的当前视野**（树后为暗缺口）；侧栏写可见/遮挡/超距
+- SAY / GIVE 仍只按听觉半径，隔着树也能听到
 
 ### v2.2 已交付
 
@@ -50,7 +58,7 @@ godot/scripts/
     goals.gd      目标持久化
     coordinator.gd  agent 生命周期 + capture/apply_world
   world/
-    world.gd      地图生成与物品可见性过滤
+    world.gd      地图生成、物品可见性、has_line_of_sight
     exploration_map.gd  探索快照 {terrain, tick}
     save_game.gd  单槽 world.json
     clock.gd      restore_tick（不补发错过的 tick）
@@ -69,9 +77,9 @@ data/             运行时，不进 git（含 saves/）
 ## 3. 仍可后置
 
 - P2.3 世界改动后的过时快照刷新
-- tileset / 向量记忆 / 日夜 / 视线遮挡
+- tileset / 向量记忆 / 日夜
 
-验收 v2.2：已跑通。关游戏再开 tick/坐标/迷雾/地上物品接续；Ctrl+R 后再开从出生点新局。
+验收 v2.3：G 跟随某 agent 时，树/山后的同伴与地面物品不应出现在视野里；SAY 隔着树仍可按听觉半径送达。
 
 ---
 
@@ -103,4 +111,4 @@ python tools/digest_session.py data/logs/<session>.jsonl
 
 ---
 
-_最后更新：v2.2 世界续局。_
+_最后更新：v2.3 视线遮挡。_

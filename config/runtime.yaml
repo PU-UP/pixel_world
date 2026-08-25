@@ -11,12 +11,15 @@ agent:
   move_speed_px: 80.0
   action_log_max: 8
   starting_agents: 5
+  los: true
+  los_block: [tree, mountain]
 
 control:
   mode: manual   # manual | agent
 
 observer:
   default_god: true
+  god_vision_overlay: true
 
 save:
   enabled: true

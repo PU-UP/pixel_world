@@ -156,7 +156,7 @@ autowrap_mode = 3
 layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.88, 0.95, 1)
 theme_override_font_sizes/font_size = 13
-text = "全员"
+text = "全员 · 选中视野"
 
 [node name="RosterScroll" type="ScrollContainer" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
 custom_minimum_size = Vector2(0, 88)

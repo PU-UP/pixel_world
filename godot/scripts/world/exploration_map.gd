@@ -23,6 +23,9 @@ func update_observer(center: Vector2i, radius: int, world = null, tick: int = 0)
 				continue
 			var tx: int = center.x + dx
 			var ty: int = center.y + dy
+			var cell := Vector2i(tx, ty)
+			if world != null and not world.has_line_of_sight(center, cell):
+				continue
 			var key: String = _key(tx, ty)
 			_visible[key] = true
 			var terrain: int = 0
@@ -49,6 +52,10 @@ func merge_from(other: ExplorationMap) -> int:
 
 func explored_count() -> int:
 	return _explored.size()
+
+
+func visible_count() -> int:
+	return _visible.size()
 
 
 func get_state(x: int, y: int) -> int:
