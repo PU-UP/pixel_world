@@ -4,6 +4,18 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.4
+
+默认开局就能感到世界在规则里跑；续局检索不再把时钟归零留下的旧计划当成近事。
+
+- **默认自主** — `config/runtime.yaml` → `control.mode: agent`；F3 仍可切回手动
+- **状态栏规则** — `规则:LOS·光圈·续局/新局`；手动时写 `F3自主`
+- **记忆时钟** — 检索丢弃 tick 大于当前时钟的条目；同 tick 的计划/反思只留最新一条；tick=1 簇降权
+
+## v2.3
+
+树/山挡住视线；上帝视角用浅金光圈标出 Tab 选中角色的当前视野（含 LOS 缺口）。SAY 仍按听觉半径。
+
 ## v2.2
 
 关闭游戏再开会接续同一局：时钟、角色位置、迷雾、地面物品、背包、事件进度、观察者视角。
@@ -81,7 +93,7 @@ GUT 单测见 [`docs/testing-setup.md`](./docs/testing-setup.md)。
 
 | 键 | 功能 |
 |---|---|
-| F3 | 手动 ↔ Agent |
+| F3 | 手动 ↔ Agent（默认自主） |
 | F1 / F2 | 暂停 / 单步 |
 | Tab | 切换 HUD 焦点 agent（上帝模式下不关全图） |
 | F4 / F5 / F6 | 记忆 / 关系+计划 / 小地图 |

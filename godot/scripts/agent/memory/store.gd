@@ -71,18 +71,33 @@ func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Arra
 	var w_sim: float = float(cfg.get("similarity_weight", 0.7))
 	var w_rec: float = float(cfg.get("recency_weight", 0.3))
 	var w_imp: float = float(cfg.get("importance_weight", 0.2))
+	var drop_future: bool = bool(cfg.get("drop_future_ticks", true))
+	var collapse: Array = cfg.get("collapse_same_tick", ["plan", "reflection"])
+	if typeof(collapse) != TYPE_ARRAY:
+		collapse = ["plan", "reflection"]
+	var origin_tick: int = int(cfg.get("origin_cluster_tick", 1))
+	var origin_scale: float = float(cfg.get("origin_recency_scale", 0.25))
+	var latest_same_tick: Dictionary = _latest_id_by_tick_category(collapse)
 	var ranked: Array = []
 	for mem in _memories:
 		var mem_tick: int = int(mem.get("tick", 0))
+		if drop_future and mem_tick > current_tick:
+			continue
 		if current_tick - mem_tick > time_window:
 			continue
 		var cat: String = str(mem.get("category", ""))
 		var exclude: Array = cfg.get("exclude_categories", [])
 		if cat in exclude:
 			continue
+		if cat in collapse:
+			var key: String = _tick_category_key(mem_tick, cat)
+			if int(mem.get("id", 0)) != int(latest_same_tick.get(key, -1)):
+				continue
 		var recency := 1.0
 		if time_window > 0:
 			recency = clampf(1.0 - float(current_tick - mem_tick) / float(time_window), 0.0, 1.0)
+		if cat in collapse and mem_tick <= origin_tick and origin_scale < 1.0:
+			recency *= clampf(origin_scale, 0.0, 1.0)
 		var sim := _text_similarity(query, str(mem.get("text", "")))
 		var imp := float(mem.get("importance", 0.1))
 		var score := w_sim * sim + w_rec * recency + w_imp * imp
@@ -92,6 +107,23 @@ func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Arra
 	for i in mini(k, ranked.size()):
 		out.append(ranked[i]["mem"])
 	return out
+
+
+func _latest_id_by_tick_category(categories: Array) -> Dictionary:
+	var latest: Dictionary = {}
+	for mem in _memories:
+		var cat: String = str(mem.get("category", ""))
+		if not cat in categories:
+			continue
+		var key: String = _tick_category_key(int(mem.get("tick", 0)), cat)
+		var id: int = int(mem.get("id", 0))
+		if id > int(latest.get(key, -1)):
+			latest[key] = id
+	return latest
+
+
+func _tick_category_key(tick: int, category: String) -> String:
+	return "%d|%s" % [tick, category]
 
 
 func apply_decay(current_tick: int, cfg: Dictionary) -> void:

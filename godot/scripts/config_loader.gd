@@ -59,7 +59,7 @@ func llm_concurrency() -> int:
 
 
 func control_mode() -> String:
-	return str(runtime.get("control", {}).get("mode", "manual"))
+	return str(runtime.get("control", {}).get("mode", "agent"))
 
 
 func decision_skip_while_walking() -> bool:

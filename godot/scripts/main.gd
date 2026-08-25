@@ -56,6 +56,7 @@ var _minimap_visible: bool = false
 var _control_mode: int = ControlMode.MANUAL
 var _observe_details_visible: bool = true
 var _god_view: bool = true
+var _continued: bool = false
 var _fog: FogOfWarLayer = null
 
 
@@ -150,10 +151,22 @@ func _set_control_mode(mode: int) -> void:
 
 
 func _control_mode_label() -> String:
-	var mode := "自主" if _control_mode == ControlMode.AGENT else "手动"
+	var mode := "自主" if _control_mode == ControlMode.AGENT else "手动·F3自主"
 	if _god_view:
 		return "%s·上帝" % mode
-	return mode
+	return "%s·跟随" % mode
+
+
+func _observer_rules_label() -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	if Config.perception_los_enabled():
+		parts.append("LOS")
+	if _god_view and Config.observer_god_vision_overlay():
+		parts.append("光圈")
+	elif not _god_view:
+		parts.append("跟随迷雾")
+	parts.append("续局" if _continued else "新局")
+	return "规则:%s" % "·".join(parts)
 
 
 func _update_view_mode() -> void:
@@ -237,7 +250,7 @@ func _update_hud() -> void:
 	var vis_n := 0
 	if selected != null and selected.exploration != null:
 		vis_n = selected.exploration.visible_count()
-	var status_core := "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s  视野:%d  缩放:%d%%" % [
+	var status_core := "帧率:%d  tick:%d  %s  %s  %s  token:%d  角色#%s  视野:%d  缩放:%d%%  %s" % [
 		Engine.get_frames_per_second(),
 		_clock.current_tick(),
 		pause_str,
@@ -247,6 +260,7 @@ func _update_hud() -> void:
 		roster,
 		vis_n,
 		zoom_pct,
+		_observer_rules_label(),
 	]
 	if not _observe_details_visible:
 		_hud_status.text = "【点击展开】%s" % status_core
@@ -494,9 +508,12 @@ func _try_step_input(agent: PlayerScript, delta: Vector2i) -> void:
 func _try_load_save() -> String:
 	var data: Dictionary = SaveGameScript.read()
 	if data.is_empty():
+		_continued = false
 		return ""
 	if not _coordinator.apply_world(data):
+		_continued = false
 		return ""
+	_continued = true
 	if data.has("god_view"):
 		_god_view = bool(data.get("god_view", true))
 	return str(data.get("control_mode", "")).strip_edges()
@@ -527,6 +544,7 @@ func _notification(what: int) -> void:
 func _reset_world() -> void:
 	_llm.cancel_pending()
 	_logger.rotate_session("world_reset")
+	_continued = false
 	var keep_agent_mode := _control_mode == ControlMode.AGENT
 	_coordinator.reset_world(keep_agent_mode)
 	_connect_decision_signals()

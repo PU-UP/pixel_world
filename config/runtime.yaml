@@ -15,7 +15,7 @@ agent:
   los_block: [tree, mountain]
 
 control:
-  mode: manual   # manual | agent
+  mode: agent   # manual | agent；F3 切换。新开局默认自主，观察者立刻能看到规则在跑
 
 observer:
   default_god: true
@@ -54,6 +54,12 @@ memory:
     recency_weight: 0.3
     similarity_weight: 0.7
     importance_weight: 0.2
+    drop_future_ticks: true
+    origin_cluster_tick: 1
+    origin_recency_scale: 0.25
+    collapse_same_tick:
+      - plan
+      - reflection
     exclude_categories:
       - observation
       - decision

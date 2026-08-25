@@ -97,6 +97,7 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 2
 theme_override_font_sizes/font_size = 14
 text = "帧率:0  tick:0"
+autowrap_mode = 3
 
 [node name="AgentLabel" type="Label" parent="HUD/Root/HBox/ObservePanel/ObserveVBox"]
 layout_mode = 2

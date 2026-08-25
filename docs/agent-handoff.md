@@ -5,17 +5,24 @@
 
 ---
 
-## 1. 当前版本快照（v2.3）
+## 1. 当前版本快照（v2.4）
 
 | 项 | 说明 |
 |---|---|
 | **引擎** | Godot 4.7.x，`godot/project.godot` |
 | **地图** | 96×96 瓦片，程序化色块（非 TileMap 美术） |
 | **Agent** | 5 个 LLM agent，MiniMax function calling |
-| **观测** | HUD + 全员侧栏 + `data/logs/` + `tools/digest_session.py`（**无局内回放 UI**） |
+| **观测** | HUD + 全员侧栏 + `data/logs/` + `tools/digest_session.py`（**无局内回放 UI**）；状态栏标 LOS/光圈/续局 |
 | **视角** | 默认上帝全图；G 切换跟随迷雾；跟随仅 VISIBLE 显示其他 agent/物品 |
+| **操控** | 默认自主；F3 切手动；续局记住上次 F3 |
 | **续局** | `data/saves/world.json`；关游戏再开接续世界。Ctrl+R 开新局 |
 | **感知** | 视野半径 + 树/山视线遮挡；SAY 仍按听觉半径 |
+
+### v2.4 已交付
+
+- 新开局默认 `control.mode: agent`（F3 仍可切手动）
+- 状态栏 `规则:LOS·光圈·续局/新局`；手动时提示 `F3自主`
+- 记忆检索：丢弃 tick 大于当前时钟的条目；同 tick 的 plan/reflection 只留最新；tick=1 簇降权
 
 ### v2.3 已交付
 
@@ -77,15 +84,15 @@ data/             运行时，不进 git（含 saves/）
 ## 3. 仍可后置
 
 - P2.3 世界改动后的过时快照刷新
-- tileset / 向量记忆 / 日夜
+- tileset / 向量记忆 / 日夜 / SLEEP
 
-验收 v2.3：G 跟随某 agent 时，树/山后的同伴与地面物品不应出现在视野里；SAY 隔着树仍可按听觉半径送达。
+验收 v2.4：无存档开局应直接自主跑，不必先 F3；状态栏能看出 LOS/光圈/新局或续局。已有 `world.json` 会记住上次的 F3 状态。
 
 ---
 
 ## 4. 建议迭代顺序
 
-P2.3（世界会变之后）→ 跑局看 anomalies / tokens。不要做局内回放 UI。
+P2.3（世界会变之后）→ 日夜/SLEEP → 跑局看 anomalies / tokens。不要做局内回放 UI。
 
 ---
 
@@ -111,4 +118,4 @@ python tools/digest_session.py data/logs/<session>.jsonl
 
 ---
 
-_最后更新：v2.3 视线遮挡。_
+_最后更新：v2.4 观察者默认可感 + 记忆时钟卫生。_
