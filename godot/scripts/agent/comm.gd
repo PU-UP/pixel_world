@@ -23,7 +23,7 @@ func all_players() -> Array:
 
 func players_in_perception(observer: Player) -> Array:
 	var out: Array = []
-	var r: int = observer.observation_radius_tiles
+	var r: int = observer.perception_radius()
 	var ot := observer.get_tile_position()
 	var world = observer.game_world()
 	for p in _players:

@@ -252,7 +252,7 @@ func _init() -> void:
 			failed += 1
 			printerr("[FAIL] tick_cost WAIT: ", tc2)
 		# IMPLEMENTED_KINDS 应包含核心原语
-		var required_kinds := ["MOVE_TO", "SAY", "PICK_UP", "OBSERVE", "WAIT"]
+		var required_kinds := ["MOVE_TO", "SAY", "PICK_UP", "OBSERVE", "WAIT", "SLEEP"]
 		var kinds_ok := true
 		for kind in required_kinds:
 			if kind not in A.IMPLEMENTED_KINDS:

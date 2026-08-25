@@ -94,6 +94,30 @@ func observer_god_vision_overlay() -> bool:
 	return bool(runtime.get("observer", {}).get("god_vision_overlay", true))
 
 
+func time_cfg() -> Dictionary:
+	return runtime.get("time", {})
+
+
+func time_enabled() -> bool:
+	return bool(time_cfg().get("enabled", true))
+
+
+func time_day_length_ticks() -> int:
+	return maxi(1, int(time_cfg().get("day_length_ticks", 240)))
+
+
+func time_night_perception_scale() -> float:
+	return clampf(float(time_cfg().get("night_perception_scale", 0.6)), 0.2, 1.0)
+
+
+func time_sleep_max_ticks() -> int:
+	return maxi(1, int(time_cfg().get("sleep_max_ticks", 240)))
+
+
+func time_phase_bar_width() -> int:
+	return clampi(int(time_cfg().get("phase_bar_width", 8)), 4, 16)
+
+
 func save_cfg() -> Dictionary:
 	return runtime.get("save", {})
 

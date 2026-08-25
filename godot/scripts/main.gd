@@ -58,6 +58,7 @@ var _observe_details_visible: bool = true
 var _god_view: bool = true
 var _continued: bool = false
 var _fog: FogOfWarLayer = null
+var _day_modulate: CanvasModulate = null
 
 
 func _ready() -> void:
@@ -81,6 +82,9 @@ func _ready() -> void:
 	add_child(_fog)
 	move_child(_fog, _agents_root.get_index())
 	_fog.setup(_world)
+	_day_modulate = CanvasModulate.new()
+	_day_modulate.name = "DayNightModulate"
+	add_child(_day_modulate)
 	_camera.set_world_center(_world.world_size() * 0.5)
 	_god_view = Config.observer_default_god()
 	var loaded_control: String = _try_load_save()
@@ -128,6 +132,7 @@ func _on_roster_changed() -> void:
 
 
 func _process(_delta: float) -> void:
+	_apply_day_night()
 	_update_view_mode()
 	_apply_entity_visibility()
 	var agent := _current_agent()
@@ -167,6 +172,8 @@ func _observer_rules_label() -> String:
 	elif not _god_view:
 		parts.append("跟随迷雾")
 	parts.append("续局" if _continued else "新局")
+	if _clock != null and _clock.time_enabled():
+		parts.append(_clock.format_phase_clock())
 	return "规则:%s" % "·".join(parts)
 
 
@@ -178,7 +185,16 @@ func _log_observer_state() -> void:
 		"control_mode": "agent" if _control_mode == ControlMode.AGENT else "manual",
 		"god_view": _god_view,
 		"continued": _continued,
+		"phase": _clock.phase() if _clock != null else "day",
+		"day_index": _clock.day_index() if _clock != null else 0,
+		"phase_progress": _clock.phase_progress() if _clock != null else 1.0,
 	})
+
+
+func _apply_day_night() -> void:
+	if _day_modulate == null or _clock == null:
+		return
+	_day_modulate.color = _clock.phase_tint()
 
 
 func _update_view_mode() -> void:
@@ -187,7 +203,7 @@ func _update_view_mode() -> void:
 	var agent := _current_agent()
 	if agent != null:
 		_fog.set_exploration(agent.exploration)
-		_fog.set_vision_focus(agent.get_tile_position(), agent.observation_radius_tiles)
+		_fog.set_vision_focus(agent.get_tile_position(), agent.perception_radius())
 	if _god_view:
 		_fog.set_god_mode(true)
 		_camera.set_view_mode(CameraRigScript.ViewMode.GOD_MAP)
@@ -338,7 +354,7 @@ func _roster_vis_label(observer: PlayerScript, p: PlayerScript, tile: Vector2i) 
 	var st: int = observer.exploration.get_state(tile.x, tile.y)
 	if st == ExplorationMap.TileVis.VISIBLE:
 		return "可见"
-	var r: int = observer.observation_radius_tiles
+	var r: int = observer.perception_radius()
 	var ot: Vector2i = observer.get_tile_position()
 	var dx: int = tile.x - ot.x
 	var dy: int = tile.y - ot.y

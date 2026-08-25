@@ -33,6 +33,7 @@ Do not MOVE_TO another agent's exact tile — stand on an adjacent walkable tile
 If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
 If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
 WAIT to stand still for a few ticks when you have nothing urgent to do.
+SLEEP until a future tick (usually next dawn) when it is dusk or night; vision shrinks at night.
 SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
 Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
 Respond ONLY via tool/function call — no free-form answer."""
@@ -181,6 +182,15 @@ static func tool_definitions_for_context(
 			"ticks": {"type": "integer", "description": "ticks to wait, 1-%d" % max_wait},
 		},
 		["ticks"],
+	))
+	var sleep_max: int = Config.time_sleep_max_ticks()
+	tools.append(_fn(
+		AgentActions.KIND_SLEEP,
+		"Sleep until a future world tick (max %d ticks from now). Prefer dusk/night; typically until_tick = next dawn." % sleep_max,
+		{
+			"until_tick": {"type": "integer", "description": "world tick to wake up (must be > current tick)"},
+		},
+		["until_tick"],
 	))
 	return tools
 

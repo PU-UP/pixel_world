@@ -373,7 +373,7 @@ func _ground_item_ids() -> PackedStringArray:
 		return ids
 	for item in _player.game_world().state.items_near(
 		_player.get_tile_position(),
-		_player.observation_radius_tiles + 1,
+		_player.perception_radius() + 1,
 	):
 		var iid: String = str(item.get("item_id", ""))
 		if not iid.is_empty():

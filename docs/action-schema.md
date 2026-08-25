@@ -15,7 +15,7 @@
 | `DROP` | `item_id` | 0 | 是 | 视野内 |
 | `USE` | `item_id, on` | 1 | 否 | 视野内 |
 | `GIVE` | `item_id, to` | 1 | 否 | 双方可见 |
-| `SLEEP` | `until_tick` | 自身全部 | 是 | 不可见 |
+| `SLEEP` | `until_tick` | 睡到该 tick | 否 | 视野内可见入睡 |
 | `WAIT` | `ticks` | 指定 tick | 是 | 视野内可见"发呆" |
 
 ## 编码方式 (P2 实施)
@@ -35,5 +35,5 @@ class Action:
 
 ## 当前状态
 
-- 已实现：`MOVE_TO` `SAY` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT`
-- 未实现：`EMOTE` `SLEEP`
+- 已实现：`MOVE_TO` `SAY` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`
+- 未实现：`EMOTE`

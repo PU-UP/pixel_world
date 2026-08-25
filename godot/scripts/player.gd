@@ -55,19 +55,22 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"give": "给予",
 	"share_map": "共享地图",
 	"wait": "等待",
+	"sleep": "睡觉",
 	"received": "收到",
 	"heard": "听到",
 }
 var _selected: bool = false
 
 # ---- P2 状态机 ----
-enum State { IDLE, WALKING, WAITING }
+enum State { IDLE, WALKING, WAITING, SLEEPING }
 var _state: int = State.IDLE
 var _action_queue: Array = []           # 待执行的 actions
 var _current_action: Dictionary = {}    # 正在执行的
 var _current_path: Array = []           # 像素路径 (Vector2)
 var _path_idx: int = 0                  # 下一个要走的路径点索引
 var _wait_remaining: int = 0
+var _sleep_until_tick: int = 0
+var _last_phase: String = ""
 var _walk_anchor: Vector2 = Vector2.ZERO
 var _walk_stuck_time: float = 0.0
 
@@ -79,7 +82,7 @@ var _pending_spawn: Variant = null
 # 生命周期
 # ------------------------------------------------------------------
 func is_busy() -> bool:
-	return _state == State.WALKING or _state == State.WAITING
+	return _state == State.WALKING or _state == State.WAITING or _state == State.SLEEPING
 
 
 func get_tile_position() -> Vector2i:
@@ -158,12 +161,15 @@ func _rebuild_sprite() -> void:
 
 func capture_save() -> Dictionary:
 	var tile: Vector2i = get_tile_position()
-	return {
+	var data := {
 		"id": str(agent_id),
 		"tile": [tile.x, tile.y],
 		"inventory": inventory.duplicate(),
 		"exploration": exploration.to_dict(),
 	}
+	if _state == State.SLEEPING and _sleep_until_tick > 0:
+		data["sleep_until_tick"] = _sleep_until_tick
+	return data
 
 
 func apply_save(row: Dictionary, restore_exploration: bool = true) -> void:
@@ -188,7 +194,8 @@ func apply_save(row: Dictionary, restore_exploration: bool = true) -> void:
 	_last_observation_tick = -1
 	if _world != null:
 		var now: int = _clock.current_tick() if _clock != null else 0
-		exploration.update_observer(get_tile_position(), observation_radius_tiles, _world, now)
+		exploration.update_observer(get_tile_position(), perception_radius(), _world, now)
+	_restore_sleep(int(row.get("sleep_until_tick", 0)))
 
 
 func bind_world(world) -> void:
@@ -201,6 +208,10 @@ func bind_world(world) -> void:
 
 func game_world() -> GameWorld:
 	return _world
+
+
+func current_tick() -> int:
+	return _clock.current_tick() if _clock != null else 0
 
 func bind_clock(clock) -> void:
 	if _clock != null and _clock.tick.is_connected(_on_clock_tick):
@@ -222,12 +233,26 @@ func queued_action_count() -> int:
 	return _action_queue.size()
 
 
+func is_sleeping() -> bool:
+	return _state == State.SLEEPING
+
+
 func busy_state() -> String:
+	if _state == State.SLEEPING:
+		var left: int = maxi(0, _sleep_until_tick - current_tick())
+		return "sleeping余%d" % left
 	if _state == State.WAITING:
 		return "waiting"
 	if _state == State.WALKING:
 		return "walking"
 	return "idle"
+
+
+func perception_radius() -> int:
+	var base: int = observation_radius_tiles
+	if _clock == null or not _clock.time_enabled() or not _clock.is_night():
+		return base
+	return maxi(2, int(round(float(base) * Config.time_night_perception_scale())))
 
 # ------------------------------------------------------------------
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
@@ -264,8 +289,10 @@ func clear_action_queue() -> void:
 	_current_path = []
 	_path_idx = 0
 	_wait_remaining = 0
+	_sleep_until_tick = 0
 	_walk_stuck_time = 0.0
 	_state = State.IDLE
+	modulate = Color.WHITE
 	_current_action = {}
 
 # ------------------------------------------------------------------
@@ -294,6 +321,10 @@ func _physics_process(delta: float) -> void:
 func _draw() -> void:
 	if _selected:
 		draw_arc(Vector2.ZERO, TILE_SIZE * 0.55, 0.0, TAU, 24, Color(1.0, 0.95, 0.3, 0.85), 2.0)
+	if _state == State.SLEEPING:
+		draw_circle(Vector2(5, -9), 2.0, Color(0.85, 0.9, 1.0, 0.95))
+		draw_circle(Vector2(9, -13), 2.4, Color(0.85, 0.9, 1.0, 0.95))
+		draw_circle(Vector2(13, -17), 2.8, Color(0.85, 0.9, 1.0, 0.95))
 	if not debug_show_path:
 		return
 	if _current_path.is_empty():
@@ -336,6 +367,8 @@ func _pump_next_action() -> void:
 			_execute_share_map(_current_action)
 		AgentActions.KIND_WAIT:
 			_execute_wait(_current_action)
+		AgentActions.KIND_SLEEP:
+			_execute_sleep(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -450,7 +483,7 @@ func _execute_observe(action: Dictionary) -> void:
 				break
 	if detail.is_empty() and _world != null and _world.state != null:
 		var found: Dictionary = _world.state.find_ground_item_near(
-			get_tile_position(), target, observation_radius_tiles
+			get_tile_position(), target, perception_radius()
 		)
 		if not found.is_empty():
 			var it: Vector2i = found.get("tile", Vector2i.ZERO)
@@ -550,18 +583,58 @@ func _execute_wait(action: Dictionary) -> void:
 	var tick: int = _clock.current_tick() if _clock else -1
 	_wait_remaining = ticks
 	_state = State.WAITING
+	modulate = Color.WHITE
 	_log_action(tick, "wait", "%d ticks" % ticks)
 	_log_obs_action(AgentActions.KIND_WAIT, action.get("params", {}), true, "wait %d" % ticks)
 
 
+func _execute_sleep(action: Dictionary) -> void:
+	var until_tick: int = int(action.get("params", {}).get("until_tick", 0))
+	var now: int = _clock.current_tick() if _clock else 0
+	var max_sleep: int = Config.time_sleep_max_ticks()
+	until_tick = clampi(until_tick, now + 1, now + max_sleep)
+	_enter_sleep(until_tick)
+	_log_action(now, "sleep", "until t%d" % until_tick)
+	_log_obs_action(AgentActions.KIND_SLEEP, action.get("params", {}), true, "until t%d" % until_tick)
+
+
+func _enter_sleep(until_tick: int) -> void:
+	_sleep_until_tick = until_tick
+	_state = State.SLEEPING
+	modulate = Color(0.62, 0.64, 0.82)
+	queue_redraw()
+
+
+func _restore_sleep(until_tick: int) -> void:
+	if until_tick <= current_tick():
+		return
+	_enter_sleep(until_tick)
+
+
 func _on_clock_tick(_tick_index: int) -> void:
-	if _state != State.WAITING:
+	if _clock != null:
+		var p: String = _clock.phase()
+		if p != _last_phase:
+			_last_phase = p
+			_last_observation_tick = -1
+	if _state == State.WAITING:
+		_wait_remaining -= 1
+		if _wait_remaining > 0:
+			return
+		_wait_remaining = 0
+		_finish_idle()
 		return
-	_wait_remaining -= 1
-	if _wait_remaining > 0:
+	if _state != State.SLEEPING:
 		return
-	_wait_remaining = 0
+	if _clock != null and _clock.current_tick() < _sleep_until_tick:
+		return
+	_sleep_until_tick = 0
+	_finish_idle()
+
+
+func _finish_idle() -> void:
 	_state = State.IDLE
+	modulate = Color.WHITE
 	_current_action = {}
 	_pump_next_action()
 
@@ -575,7 +648,7 @@ func _use_target_valid(on_target: String) -> bool:
 				return true
 	if _world != null and _world.state != null:
 		var found: Dictionary = _world.state.find_ground_item_near(
-			get_tile_position(), on_target, observation_radius_tiles
+			get_tile_position(), on_target, perception_radius()
 		)
 		if not found.is_empty():
 			var item_tile: Vector2i = found.get("tile", Vector2i.ZERO)
@@ -659,7 +732,7 @@ func _refresh_observation_if_needed() -> void:
 	if _world == null or _clock == null:
 		return
 	var t: int = _clock.current_tick()
-	if t - _last_observation_tick < observation_refresh_ticks:
+	if _last_observation_tick >= 0 and t - _last_observation_tick < observation_refresh_ticks:
 		return
 	_last_observation_tick = t
 	var cx: int = int(floor(global_position.x / TILE_SIZE))
@@ -667,7 +740,7 @@ func _refresh_observation_if_needed() -> void:
 	var region_name: String = "wilderness"
 	if _world != null and _world.state != null:
 		region_name = _world.state.region_name_at(Vector2i(cx, cy))
-	var r: int = observation_radius_tiles
+	var r: int = perception_radius()
 	var counts: Dictionary = {}
 	var origin := Vector2i(cx, cy)
 	for dy in range(-r, r + 1):
@@ -688,7 +761,10 @@ func _refresh_observation_if_needed() -> void:
 	if _comm != null:
 		for p in _comm.players_in_perception(self):
 			var pt: Vector2i = p.get_tile_position()
-			agent_parts.append("%s@(%d,%d)" % [str(p.agent_id), pt.x, pt.y])
+			var extra := ""
+			if p.is_sleeping():
+				extra = " 入睡"
+			agent_parts.append("%s@(%d,%d)%s" % [str(p.agent_id), pt.x, pt.y, extra])
 	if agent_parts.size() > 0:
 		_observation_text = "区域=%s | %s | 附近角色: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
 	else:
@@ -709,7 +785,13 @@ func _refresh_observation_if_needed() -> void:
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | 听到: " + "; ".join(heard)
-	exploration.update_observer(Vector2i(cx, cy), observation_radius_tiles, _world, t)
+	if _clock != null and _clock.time_enabled():
+		_observation_text = "%s 下次黎明t%d | %s" % [
+			_clock.format_phase_clock(),
+			_clock.next_dawn_tick(),
+			_observation_text,
+		]
+	exploration.update_observer(Vector2i(cx, cy), r, _world, t)
 
 func _tile_name(t: int) -> String:
 	match t:
@@ -768,10 +850,12 @@ func _log_obs_say(
 # HUD 接口
 # ------------------------------------------------------------------
 func get_observation() -> String:
+	_refresh_observation_if_needed()
 	return _observation_text
 
 
 func get_observation_for_llm() -> String:
+	_refresh_observation_if_needed()
 	var text := _observation_text
 	var idx: int = text.find("| 听到:")
 	if idx >= 0:
@@ -836,7 +920,12 @@ func get_status_line() -> String:
 		state_zh = "行走"
 	elif _state == State.WAITING:
 		state_zh = "等待"
-	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s" % [
+	elif _state == State.SLEEPING:
+		state_zh = "睡觉余%d" % maxi(0, _sleep_until_tick - current_tick())
+	var time_s := ""
+	if _clock != null and _clock.time_enabled():
+		time_s = "  %s" % _clock.format_phase_clock()
+	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s%s" % [
 		str(agent_id),
 		state_zh,
 		queue_n,
@@ -844,6 +933,7 @@ func get_status_line() -> String:
 		tile_x,
 		tile_y,
 		_tile_name(t),
+		time_s,
 	]
 
 

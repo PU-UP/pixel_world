@@ -4,6 +4,10 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.5
+
+日夜循环由 tick 派生；画面染色、状态栏时段进度条、夜间视野缩小。`SLEEP` 睡到指定 tick（通常是下次黎明）；未醒完关游戏，再开会接着睡。
+
 ## v2.4
 
 默认开局就能感到世界在规则里跑；续局检索不再把时钟归零留下的旧计划当成近事。
@@ -52,7 +56,7 @@ P8 观测与决策硬化：日志 digest、action gate、MOVE 吸附、token 节
 - **世界交互** — 物品拾取/丢弃/使用/给予，区域事件，小地图
 - **观测与日志** — 实时 HUD（观察 / 决策 / 记忆 / 关系），`data/logs/` 会话记录
 
-未实现：`EMOTE` / `SLEEP`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
+未实现：`EMOTE`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
 
 **v2.0 验收**：[docs/v2.0-acceptance.md](./docs/v2.0-acceptance.md) · **协作者交接**：[docs/agent-handoff.md](./docs/agent-handoff.md)
 

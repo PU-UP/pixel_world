@@ -21,6 +21,21 @@ observer:
   default_god: true
   god_vision_overlay: true
 
+time:
+  enabled: true
+  day_length_ticks: 240
+  dawn_end: 0.12
+  day_end: 0.55
+  dusk_end: 0.70
+  night_perception_scale: 0.6
+  sleep_max_ticks: 240
+  phase_bar_width: 8
+  tint:
+    dawn: [1.0, 0.82, 0.68]
+    day: [1.0, 1.0, 1.0]
+    dusk: [0.92, 0.62, 0.48]
+    night: [0.32, 0.38, 0.62]
+
 save:
   enabled: true
   autosave_ticks: 25

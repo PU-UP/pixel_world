@@ -227,7 +227,7 @@ actions:
   - USE:         { item: item_id, on: target }    # 用物品
   - GIVE:        { item: item_id, to: agent_id }
   - SHARE_MAP:   { to: agent_id }                # 双方互发后合并探索快照（灰区）
-  - SLEEP:       { until: tick }                 # 未实现
+  - SLEEP:       { until_tick: int }             # 睡到该 tick（通常下次黎明）
   - WAIT:        { ticks: int }                  # 原地等待 N tick
 ```
 
@@ -306,8 +306,9 @@ top_k = retrieve(
 | **v2.2 - 世界续局** | 关闭/重开接续 tick、位置、迷雾、物品、背包、观察者偏好；Ctrl+R 开新局 | 关游戏再开，角色还在原地、迷雾还在 | ✅ |
 | **v2.3 - 视线遮挡** | 树/山挡住视野；上帝视角标出选中视野（含 LOS 缺口）；SAY 仍按听觉半径 | 上帝模式能看到选中角色视野缺口；侧栏显示可见/遮挡 | ✅ |
 | **v2.4 - 观察者默认可感** | 默认自主；HUD 标出 LOS/光圈/续局；检索丢掉时钟错位与 tick=1 旧计划簇；Ctrl+R 丢弃在途 LLM | 新开局不用 F3；续局检索不把前世计划当近事；重置后不应出现旧 tick 决策 | ✅ |
+| **v2.5 - 日夜 + SLEEP** | tick 派生日夜；画面染色；夜间视野缩小；SLEEP 睡到 until_tick | 观察者不用翻日志能看出昼夜；角色可入睡，光圈夜间变小 | ✅ |
 
-仍可后置：P2.3 世界改动后的过时迷雾快照；正式 tileset；向量记忆；日夜。局内回放 UI 明确不做。
+仍可后置：P2.3 世界改动后的过时迷雾快照；正式 tileset；向量记忆。局内回放 UI 明确不做。
 
 ---
 
@@ -384,7 +385,7 @@ agent:
 | **玩家角色** | ✅ **上帝视角观察者**(默认) | 启动默认全图可见；G 在上帝 / 跟随某 agent（迷雾+VISIBLE 裁剪）之间切换。Tab 只切换 HUD 焦点，不自动退出上帝。F3 手动接管移动。 |
 | **地图大小** | ✅ 96×96 瓦片 | 程序化色块；正式 tileset 仍待 P7 美术替换。 |
 | **agent 碰撞** | ✅ 互不物理阻挡 | 地形可走性由 A* 保证。靠近他人停在邻格，不抢脚下格。WALKING 位移不足则 abort 并记 `movement_stuck`。 |
-| **世界续局** | ✅ 单槽 `data/saves/world.json` | 关闭/重开接续世界（tick、位置、迷雾、地面物品、背包、事件进度、计划、性格漂移、观察者 G/选中）。记忆/关系仍走各自 JSON。Ctrl+R / `tools/reset_game.py` 删存档开新局。不存进行中的行走路径与 inflight LLM。 |
+| **世界续局** | ✅ 单槽 `data/saves/world.json` | 关闭/重开接续世界（tick、位置、迷雾、地面物品、背包、事件进度、计划、性格漂移、未醒完的 `sleep_until_tick`、观察者 G/选中）。记忆/关系仍走各自 JSON。Ctrl+R / `tools/reset_game.py` 删存档开新局。不存进行中的行走路径、WAIT 剩余、inflight LLM。 |
 | **运行模式** | ✅ 本地单机 | Godot 直接本地跑;P5 后若需要再开"远程观察窗口"(只读订阅 tick 流)。 |
 
 ### 10.1 已锁定的硬性约束（基于上述决议）

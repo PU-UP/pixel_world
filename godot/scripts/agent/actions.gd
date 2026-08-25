@@ -22,7 +22,7 @@ const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
 const IMPLEMENTED_KINDS: Array[String] = [
-	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT,
+	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP,
 ]
 
 # ------------------------------------------------------------------
@@ -197,6 +197,15 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			if ticks > max_wait:
 				return {"ok": false, "error": "WAIT ticks exceed max %d" % max_wait, "hint": ""}
 			return {"ok": true, "error": "", "hint": ""}
+		KIND_SLEEP:
+			var until_tick: int = int(params.get("until_tick", 0))
+			var now_tick: int = int(ctx.get("current_tick", 0))
+			var max_sleep: int = int(ctx.get("sleep_max_ticks", Config.time_sleep_max_ticks()))
+			if until_tick <= now_tick:
+				return {"ok": false, "error": "SLEEP until_tick must be in the future", "hint": ""}
+			if until_tick - now_tick > max_sleep:
+				return {"ok": false, "error": "SLEEP longer than max %d ticks" % max_sleep, "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
 		KIND_MOVE_TO:
 			var world = ctx.get("world", null)
 			var start: Vector2i = ctx.get("agent_tile", Vector2i.ZERO)
@@ -315,7 +324,7 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 			if p != player:
 				all_agent_ids.append(str(p.agent_id))
 	if world != null and world.state != null:
-		var obs_r: int = player.observation_radius_tiles
+		var obs_r: int = player.perception_radius()
 		var pick_r: int = Config.world_item_pickup_radius()
 		for item in world.state.items_near(agent_tile, obs_r + 1):
 			var iid: String = str(item.get("item_id", ""))
@@ -343,6 +352,8 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 		"blocked_move_tiles": [],
 		"occupied_tiles": occupied_tiles,
 		"wait_max_ticks": Config.decision_wait_max_ticks(),
+		"sleep_max_ticks": Config.time_sleep_max_ticks(),
+		"current_tick": player.current_tick(),
 	}
 
 
