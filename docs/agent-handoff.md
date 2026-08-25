@@ -23,6 +23,7 @@
 - 新开局默认 `control.mode: agent`（F3 仍可切手动）
 - 状态栏 `规则:LOS·光圈·续局/新局`；手动时提示 `F3自主`
 - 记忆检索：丢弃 tick 大于当前时钟的条目；同 tick 的 plan/reflection 只留最新；tick=1 簇降权
+- 日志 `observer_state`；Ctrl+R 取消在途 LLM（epoch），避免旧决策写进新局
 
 ### v2.3 已交付
 

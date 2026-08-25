@@ -98,6 +98,7 @@ func _ready() -> void:
 	if _god_view:
 		_camera.fit_world(_world.world_size())
 	_update_view_mode()
+	_log_observer_state()
 
 
 func _connect_decision_signals() -> void:
@@ -167,6 +168,17 @@ func _observer_rules_label() -> String:
 		parts.append("跟随迷雾")
 	parts.append("续局" if _continued else "新局")
 	return "规则:%s" % "·".join(parts)
+
+
+func _log_observer_state() -> void:
+	if _logger == null:
+		return
+	_logger.log_event("observer_state", {
+		"tick": _clock.current_tick() if _clock != null else 0,
+		"control_mode": "agent" if _control_mode == ControlMode.AGENT else "manual",
+		"god_view": _god_view,
+		"continued": _continued,
+	})
 
 
 func _update_view_mode() -> void:
@@ -561,3 +573,4 @@ func _reset_world() -> void:
 	if _god_view:
 		_camera.fit_world(_world.world_size())
 	_update_view_mode()
+	_log_observer_state()

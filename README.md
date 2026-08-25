@@ -11,6 +11,7 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 - **默认自主** — `config/runtime.yaml` → `control.mode: agent`；F3 仍可切回手动
 - **状态栏规则** — `规则:LOS·光圈·续局/新局`；手动时写 `F3自主`
 - **记忆时钟** — 检索丢弃 tick 大于当前时钟的条目；同 tick 的计划/反思只留最新一条；tick=1 簇降权
+- **在途 LLM** — Ctrl+R 取消队列与 inflight；日志写 `observer_state` / `llm_cancelled`
 
 ## v2.3
 

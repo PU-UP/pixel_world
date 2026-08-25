@@ -16,6 +16,7 @@ var _retry_max: int = 2
 var _timeout_s: float = 20.0
 var _max_concurrent: int = 4
 var _next_id: int = 1
+var _epoch: int = 1
 var _obs_logger = null
 
 
@@ -47,7 +48,20 @@ func queue_length() -> int:
 
 
 func cancel_pending() -> void:
+	var dropped_inflight: int = _http_item.size()
+	var dropped_queued: int = _queue.size()
+	_epoch += 1
 	_queue.clear()
+	for http in _http_pool:
+		if not _http_item.has(http):
+			continue
+		_http_item.erase(http)
+		http.cancel_request()
+	if _obs_logger != null and (dropped_inflight > 0 or dropped_queued > 0):
+		_obs_logger.log_event("llm_cancelled", {
+			"dropped_inflight": dropped_inflight,
+			"dropped_queued": dropped_queued,
+		})
 
 
 func request_decision(messages: Array, meta: Dictionary = {}, tools: Array = []) -> int:
@@ -73,6 +87,7 @@ func _enqueue(messages: Array, meta: Dictionary, use_tools: bool) -> int:
 		"attempt": 0,
 		"use_tools": use_tools,
 		"tools": meta.get("tools", []),
+		"epoch": _epoch,
 	})
 	_pump_queue()
 	return id
@@ -98,6 +113,9 @@ func _pump_queue() -> void:
 
 
 func _send(http: HTTPRequest, item: Dictionary) -> void:
+	if int(item.get("epoch", -1)) != _epoch:
+		_pump_queue()
+		return
 	if not is_configured():
 		_log_llm(item.get("meta", {}), {}, false, "LLM API key not configured")
 		failed.emit(int(item["id"]), "LLM API key not configured (set MINIMAX_API_KEY in .env)", item.get("meta", {}))
@@ -142,6 +160,9 @@ func _on_request_completed(
 ) -> void:
 	var item: Dictionary = _http_item.get(http, {})
 	_http_item.erase(http)
+	if item.is_empty() or int(item.get("epoch", -1)) != _epoch:
+		_pump_queue()
+		return
 	var req_id := int(item.get("id", -1))
 
 	var body_text := body.get_string_from_utf8()
