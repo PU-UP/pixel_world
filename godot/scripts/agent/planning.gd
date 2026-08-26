@@ -106,7 +106,9 @@ func _on_tick(_tick_index: int) -> void:
 	if not enabled or _clock.paused or _busy:
 		return
 	_ticks_since_plan += 1
-	if _player != null and _player.is_busy():
+	if _player != null and (_player.is_sleeping() or _player.is_waiting()):
+		return
+	if Config.decision_skip_while_walking() and _player != null and _player.is_walking():
 		return
 	var trigger: int = int(Config.planning_cfg().get("trigger_ticks", 50))
 	if _steps.is_empty() or _step_index >= _steps.size() or _ticks_since_plan >= trigger:

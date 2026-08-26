@@ -2,7 +2,7 @@ tick:
   hz: 2.0
 
 llm:
-  concurrency: 3
+  concurrency: 4
 
 agent:
   perception_radius: 6
@@ -46,7 +46,7 @@ movement:
   stuck_min_displacement_px: 2.0
 
 decision:
-  skip_while_walking: true
+  skip_while_walking: false
   repeat_say_block_ticks: 40
   min_ticks_between: 2
   max_say_chars: 180

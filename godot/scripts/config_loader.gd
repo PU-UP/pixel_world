@@ -63,7 +63,7 @@ func control_mode() -> String:
 
 
 func decision_skip_while_walking() -> bool:
-	return bool(runtime.get("decision", {}).get("skip_while_walking", true))
+	return bool(runtime.get("decision", {}).get("skip_while_walking", false))
 
 
 func decision_cfg() -> Dictionary:

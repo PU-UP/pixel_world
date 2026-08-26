@@ -85,6 +85,14 @@ func is_busy() -> bool:
 	return _state == State.WALKING or _state == State.WAITING or _state == State.SLEEPING
 
 
+func is_walking() -> bool:
+	return _state == State.WALKING
+
+
+func is_waiting() -> bool:
+	return _state == State.WAITING
+
+
 func get_tile_position() -> Vector2i:
 	return Vector2i(
 		int(floor(global_position.x / TILE_SIZE)),
@@ -229,6 +237,16 @@ func bind_observability(logger) -> void:
 	_obs_logger = logger
 
 
+func _interrupt_walk() -> void:
+	_current_path.clear()
+	_path_idx = 0
+	_walk_stuck_time = 0.0
+	_current_action = {}
+	_state = State.IDLE
+	modulate = Color.WHITE
+	_pump_next_action()
+
+
 func queued_action_count() -> int:
 	return _action_queue.size()
 
@@ -274,6 +292,8 @@ func enqueue_action(action: Dictionary) -> void:
 	_log_action(_clock.current_tick() if _clock else -1, "enqueue", AgentActions.format_action(action))
 	if _state == State.IDLE:
 		_pump_next_action()
+	elif _state == State.WALKING:
+		_interrupt_walk()
 
 ## 便捷: 像素坐标 -> MOVE_TO
 func enqueue_move_to_world(world_pos: Vector2) -> void:

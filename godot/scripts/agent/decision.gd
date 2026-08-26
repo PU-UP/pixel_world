@@ -89,7 +89,9 @@ func _on_tick(_tick_index: int) -> void:
 		return
 	if _player == null:
 		return
-	if Config.decision_skip_while_walking() and _player.is_busy():
+	if _player.is_sleeping() or _player.is_waiting():
+		return
+	if Config.decision_skip_while_walking() and _player.is_walking():
 		return
 	var min_gap: int = Config.decision_min_ticks_between()
 	if min_gap > 0 and _clock.current_tick() - _last_decision_tick < min_gap:

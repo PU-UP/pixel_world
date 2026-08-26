@@ -333,6 +333,9 @@ func _track_stuck_agents(tick: int, agents: Array) -> void:
 			continue
 		var key := "%d,%d" % [int(tile_arr[0]), int(tile_arr[1])]
 		var state: String = str(row.get("state", ""))
+		if state.begins_with("sleeping") or state == "waiting":
+			_stuck_tracker[aid] = {"tile_key": key, "count": 0, "state": state}
+			continue
 		var prev: Dictionary = _stuck_tracker.get(aid, {})
 		if str(prev.get("tile_key", "")) == key:
 			var count: int = int(prev.get("count", 0)) + 1
