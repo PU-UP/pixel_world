@@ -33,6 +33,7 @@ Do not MOVE_TO another agent's exact tile — stand on an adjacent walkable tile
 If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
 If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
 WAIT to stand still for a few ticks when you have nothing urgent to do.
+EMOTE shows a short emoji visible to agents in sight (0 ticks). Use Unicode emoji or a short token.
 SLEEP until a future tick (usually next dawn) when it is dusk or night; vision shrinks at night.
 SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
 Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
@@ -113,6 +114,14 @@ static func tool_definitions_for_context(
 			"tone": {"type": "string", "description": "语气，如：友好、平静"},
 		},
 		["to", "text"],
+	))
+	tools.append(_fn(
+		AgentActions.KIND_EMOTE,
+		"Show a short emoji visible to agents in sight (0 ticks)",
+		{
+			"emoji": {"type": "string", "description": "emoji or short emote, max %d chars" % Config.emote_max_chars()},
+		},
+		["emoji"],
 	))
 	var observe_targets: Array = _merge_ids(perception_agent_ids, ground_item_ids)
 	if observe_targets.size() > 0:

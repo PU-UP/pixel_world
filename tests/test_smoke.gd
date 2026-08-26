@@ -285,15 +285,30 @@ func _init() -> void:
 		else:
 			failed += 1
 			printerr("[FAIL] enqueue_action legal: queue=", p2._action_queue.size())
-		# 注入未实现的 EMOTE -> 拒绝 + 写 log
+		# 注入合法 EMOTE -> 入队（0 tick，立即执行后队列仍可能被 pump 抽空）
 		var log_before: int = p2.action_log.size()
 		p2.enqueue_action({"kind": "EMOTE", "params": {"emoji": "?"}})
-		if p2._action_queue.size() == 1 and p2.action_log.size() > log_before:
+		var emote_logged := false
+		for row in p2.action_log:
+			if str(row.get("kind", "")) == "emote" or str(row.get("text", "")).find("EMOTE") >= 0:
+				emote_logged = true
+				break
+		if p2.action_log.size() > log_before and emote_logged:
 			passed += 1
-			print("[OK]   player.enqueue_action unimplemented EMOTE rejected, logged")
+			print("[OK]   player.enqueue_action EMOTE accepted, logged")
 		else:
 			failed += 1
-			printerr("[FAIL] enqueue_action unimplemented: queue=", p2._action_queue.size(), " log=", p2.action_log.size())
+			printerr("[FAIL] enqueue_action EMOTE: queue=", p2._action_queue.size(), " log=", p2.action_log.size())
+		# 缺 emoji 的 EMOTE -> 拒绝
+		var q_emote: int = p2._action_queue.size()
+		var log_emote: int = p2.action_log.size()
+		p2.enqueue_action({"kind": "EMOTE", "params": {}})
+		if p2._action_queue.size() == q_emote and p2.action_log.size() > log_emote:
+			passed += 1
+			print("[OK]   player.enqueue_action invalid EMOTE rejected, logged")
+		else:
+			failed += 1
+			printerr("[FAIL] enqueue_action invalid EMOTE: queue=", p2._action_queue.size())
 		# 注入非法 action (缺 x) -> 拒绝
 		var q_before: int = p2._action_queue.size()
 		p2.enqueue_action({"kind": "MOVE_TO", "params": {"y": 10}})
@@ -319,6 +334,37 @@ func _init() -> void:
 			failed += 1
 			printerr("[FAIL] get_status_line: ", status)
 		p2.free()
+
+	# ---- 像素图集 + 向量记忆 ----
+	var TileScript := load("res://scripts/world/pixel_tileset.gd")
+	if TileScript != null:
+		var atlas = PixelTileset.atlas_texture()
+		var ts = PixelTileset.tile_set()
+		if atlas != null and ts != null:
+			passed += 1
+			print("[OK]   PixelTileset atlas + TileSet ready")
+		else:
+			failed += 1
+			printerr("[FAIL] PixelTileset missing atlas or TileSet")
+	else:
+		failed += 1
+		printerr("[FAIL] PixelTileset script failed to load")
+	var EmbedScript := load("res://scripts/agent/memory/embed.gd")
+	if EmbedScript != null:
+		var va = MemoryEmbed.embed("海边看到守护者", 64)
+		var vb = MemoryEmbed.embed("在海边遇见了守护者", 64)
+		var vc = MemoryEmbed.embed("WAIT then SLEEP until dawn", 64)
+		var sim_close: float = MemoryEmbed.cosine(va, vb)
+		var sim_far: float = MemoryEmbed.cosine(va, vc)
+		if sim_close > sim_far:
+			passed += 1
+			print("[OK]   MemoryEmbed cosine ranks related Chinese text higher")
+		else:
+			failed += 1
+			printerr("[FAIL] MemoryEmbed cosine close=", sim_close, " far=", sim_far)
+	else:
+		failed += 1
+		printerr("[FAIL] MemoryEmbed script failed to load")
 
 	# ---- 总结 ----
 	print("")

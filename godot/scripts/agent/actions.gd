@@ -22,7 +22,7 @@ const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
 const IMPLEMENTED_KINDS: Array[String] = [
-	KIND_MOVE_TO, KIND_SAY, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP,
+	KIND_MOVE_TO, KIND_SAY, KIND_EMOTE, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP,
 ]
 
 # ------------------------------------------------------------------
@@ -197,6 +197,14 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			if ticks > max_wait:
 				return {"ok": false, "error": "WAIT ticks exceed max %d" % max_wait, "hint": ""}
 			return {"ok": true, "error": "", "hint": ""}
+		KIND_EMOTE:
+			var emoji: String = str(params.get("emoji", "")).strip_edges()
+			var max_chars: int = int(ctx.get("emote_max_chars", Config.emote_max_chars()))
+			if emoji.is_empty():
+				return {"ok": false, "error": "empty emoji", "hint": ""}
+			if emoji.length() > max_chars:
+				return {"ok": false, "error": "emoji longer than %d" % max_chars, "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
 		KIND_SLEEP:
 			var until_tick: int = int(params.get("until_tick", 0))
 			var now_tick: int = int(ctx.get("current_tick", 0))
@@ -353,6 +361,7 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 		"occupied_tiles": occupied_tiles,
 		"wait_max_ticks": Config.decision_wait_max_ticks(),
 		"sleep_max_ticks": Config.time_sleep_max_ticks(),
+		"emote_max_chars": Config.emote_max_chars(),
 		"current_tick": player.current_tick(),
 	}
 

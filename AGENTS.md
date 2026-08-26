@@ -299,7 +299,7 @@ top_k = retrieve(
 | **P4 - 记忆 + 反思** | JSON 记忆流 + 周期反思 + F4 面板 | 最近记忆与反思摘要（向量/SQLite 未上） | ✅ |
 | **P5 - 多 agent + 通信** | 5 agent、`SAY` 路由、并发 LLM | 可切任意 agent 看独白 | ✅ |
 | **P6 - 规划 + 关系** | Planning + 关系字段 + 性格漂移 | F5 关系/计划面板 | ✅ |
-| **P7 - 地图 + 物品 + 事件** | 96×96 荒岛、物品、事件、小地图 | 可玩；美术仍为占位色块 | ✅ |
+| **P7 - 地图 + 物品 + 事件** | 96×96 荒岛、物品、事件、小地图 | 可玩；当时为占位色块 | ✅ |
 | **P8 - 观测/护栏** | `data/logs` + digest + prompt 注入过滤 | 局内回放 UI 明确不做 | ✅ |
 | **v2.0 - 迷雾 / 目标 / SHARE_MAP** | 探索图、长期/当前目标、共享地图 | 见 README | ✅ |
 | **v2.1 - 观察者 + 移动语义** | 默认上帝全可视；跟随=VISIBLE 裁剪；移动超时/邻格会合/软碰撞；WAIT | 三人围聊后能离开；G/Tab 信息边界分离 | ✅ |
@@ -308,8 +308,9 @@ top_k = retrieve(
 | **v2.4 - 观察者默认可感** | 默认自主；HUD 标出 LOS/光圈/续局；检索丢掉时钟错位与 tick=1 旧计划簇；Ctrl+R 丢弃在途 LLM | 新开局不用 F3；续局检索不把前世计划当近事；重置后不应出现旧 tick 决策 | ✅ |
 | **v2.5 - 日夜 + SLEEP** | tick 派生日夜；画面染色；夜间视野缩小；SLEEP 睡到 until_tick | 观察者不用翻日志能看出昼夜；角色可入睡，光圈夜间变小 | ✅ |
 | **v2.6 - 过时迷雾快照** | 世界可改瓦片；灰色仍显示探索时快照；快照与 live 不符则标过时 | 跟随迷雾能看出「记忆中的树」和地上已变成草地 | ✅ |
+| **v2.7 - tileset / 向量记忆 / EMOTE** | 16×16 像素 TileMap；记忆余弦检索；EMOTE 气泡 | 地图不再是纯色块；相关记忆能按语义近似召回；角色头顶能出表情 | ✅ |
 
-仍可后置：正式 tileset；向量记忆。局内回放 UI 明确不做。
+仍可后置：第三方商用 tileset 替换原作图集；海面观感仍偏差，可参考口袋妖怪水域（大色块、稀疏波光），非当前重点。局内回放 UI 明确不做。
 
 ---
 
@@ -379,12 +380,12 @@ agent:
 
 | 决策项 | 选定 | 备注 / 风险预案 |
 |---|---|---|
-| **引擎** | ✅ Godot 4 + GDScript | 单语言栈,IDE 打开 `godot/project.godot`。<br>⚠️ 风险: GDScript 写向量检索/复杂文本处理偏弱。<br>🔁 备选: P4 阶段若需要,把 LLM 客户端迁到独立 Python 微服务,工程拆为 `godot/`(前端 + 渲染 + 世界状态权威) + `server/`(LLM + 记忆 + 反思 + 调度),Godot 用 HTTP/JSON 调。**P1-P3 不动**。 |
+| **引擎** | ✅ Godot 4 + GDScript | 单语言栈,IDE 打开 `godot/project.godot`。<br>记忆检索为本地 n-gram 哈希向量 + 余弦；若要语义 embedding API 再考虑微服务。 |
 | **LLM 接入** | ✅ MiniMax Token Plan (OpenAI 兼容) | `https://api.minimax.chat/v1/chat/completions`,key 走 `.env`。使用 `tools`/`function_calling` 强制 agent 只能输出合法 action。 |
-| **美术** | ✅ Open Source 像素 tileset | itch.io / OpenGameArt 上 GBA 风格 16x16 资源,优先可商用许可;允许先用占位纯色块跑通,后期替换。 |
+| **美术** | ✅ 原作 16×16 像素图集 | 草地/沙滩/水域/树林/山地由 `pixel_tileset.gd` 生成 atlas，走 TileMapLayer。第三方 itch/OpenGameArt 包仍可后换。 |
 | **起步规模** | ✅ 先 1 个 agent 跑通闭环,再扩到 5 个 | P3 完成前必须只有 1 个 agent(单测思维);P5 横向复制到 5 个,验证并发限流和 SAY 路由。 |
 | **玩家角色** | ✅ **上帝视角观察者**(默认) | 启动默认全图可见；G 在上帝 / 跟随某 agent（迷雾+VISIBLE 裁剪）之间切换。Tab 只切换 HUD 焦点，不自动退出上帝。F3 手动接管移动。 |
-| **地图大小** | ✅ 96×96 瓦片 | 程序化色块；正式 tileset 仍待 P7 美术替换。 |
+| **地图大小** | ✅ 96×96 瓦片 | 程序化岛屿 + 16×16 像素 TileMapLayer |
 | **agent 碰撞** | ✅ 互不物理阻挡 | 地形可走性由 A* 保证。靠近他人停在邻格，不抢脚下格。WALKING 位移不足则 abort 并记 `movement_stuck`。 |
 | **世界续局** | ✅ 单槽 `data/saves/world.json` | 关闭/重开接续世界（tick、位置、迷雾、地面物品、地形覆盖、背包、事件进度、计划、性格漂移、未醒完的 `sleep_until_tick`、观察者 G/选中）。记忆/关系仍走各自 JSON。Ctrl+R / `tools/reset_game.py` 删存档开新局。不存进行中的行走路径、WAIT 剩余、inflight LLM。 |
 | **运行模式** | ✅ 本地单机 | Godot 直接本地跑;P5 后若需要再开"远程观察窗口"(只读订阅 tick 流)。 |

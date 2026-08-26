@@ -7,6 +7,7 @@ class_name FogOfWarLayer
 
 const GameWorld = preload("res://scripts/world/world.gd")
 const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
+const PixelTileset = preload("res://scripts/world/pixel_tileset.gd")
 
 var _world: GameWorld = null
 var _exploration: ExplorationMap = null
@@ -79,10 +80,7 @@ func _draw() -> void:
 				var terrain: int = _exploration.snapshot_terrain(x, y)
 				if terrain < 0:
 					terrain = _world.tile_at_tile(Vector2i(x, y))
-				var c: Color = GameWorld.TILE_COLORS.get(terrain, Color(0.2, 0.2, 0.22))
-				c = c.darkened(0.4)
-				c.a = 1.0
-				draw_rect(rect, c)
+				PixelTileset.draw_tile(self, Vector2(x * ts, y * ts), terrain, Color(0.58, 0.58, 0.58, 1.0))
 				if Config.exploration_stale_overlay() and _exploration.is_stale(x, y, _world):
 					draw_rect(rect, Config.exploration_stale_tint())
 

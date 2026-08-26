@@ -4,6 +4,10 @@ GBA 风格 2D 俯视角荒岛仿真：多个 LLM agent 同图探索、交互、�
 
 参考 [Generative Agents](https://arxiv.org/abs/2304.03442)（Stanford, 2023）。架构见 [`AGENTS.md`](./AGENTS.md)。
 
+## v2.7
+
+16×16 像素地形（TileMapLayer）、记忆改为本地哈希向量 + 余弦检索、`EMOTE` 头顶气泡（视野内可见）。
+
 ## v2.6
 
 世界可改瓦片（事件 `tile_changes`）。跟随迷雾的灰色仍是探索时的地形快照；与当前世界不符时叠一层品红，表示记忆过时。上帝视角看 live 地形。
@@ -59,8 +63,10 @@ P8 观测与决策硬化：日志 digest、action gate、MOVE 吸附、token 节
 - **规划与关系** — 周期生成计划，agent 间亲疏/信任持久化
 - **世界交互** — 物品拾取/丢弃/使用/给予，区域事件，小地图
 - **观测与日志** — 实时 HUD（观察 / 决策 / 记忆 / 关系），`data/logs/` 会话记录
+- **EMOTE** — 短表情，0 tick，头顶气泡，视野内可见
+- **向量记忆** — 写入时生成哈希向量，检索按余弦 + 近因 + 重要性
 
-未实现：`EMOTE`；记忆检索为关键词近似（无向量）。会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
+会话结束后运行 `python tools/digest_session.py` 生成可读摘要供外部 agent 复盘。详见 [`docs/v1.0-release.md`](./docs/v1.0-release.md)。
 
 **v2.0 验收**：[docs/v2.0-acceptance.md](./docs/v2.0-acceptance.md) · **协作者交接**：[docs/agent-handoff.md](./docs/agent-handoff.md)
 

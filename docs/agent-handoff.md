@@ -5,18 +5,24 @@
 
 ---
 
-## 1. 当前版本快照（v2.6）
+## 1. 当前版本快照（v2.7）
 
 | 项 | 说明 |
 |---|---|
 | **引擎** | Godot 4.7.x，`godot/project.godot` |
-| **地图** | 96×96 瓦片，程序化色块（非 TileMap 美术） |
+| **地图** | 96×96 瓦片，16×16 像素 TileMapLayer |
 | **Agent** | 5 个 LLM agent，MiniMax function calling |
 | **观测** | HUD + 全员侧栏 + `data/logs/` + `tools/digest_session.py`（**无局内回放 UI**）；状态栏标 LOS/光圈/续局 |
 | **视角** | 默认上帝全图；G 切换跟随迷雾；跟随仅 VISIBLE 显示其他 agent/物品 |
 | **操控** | 默认自主；F3 切手动；续局记住上次 F3 |
 | **续局** | `data/saves/world.json`；关游戏再开接续世界。Ctrl+R 开新局 |
-| **感知** | 视野半径 + 树/山视线遮挡；夜间视野缩小；SAY 仍按听觉半径 |
+| **感知** | 视野半径 + 树/山视线遮挡；夜间视野缩小；SAY 仍按听觉半径；EMOTE 按视野 |
+
+### v2.7 已交付
+
+- 16×16 原作像素图集 + `TileMapLayer`；跟随迷雾的灰色快照也画同一图集
+- 记忆写入哈希向量，检索 `0.7 * cosine + 0.3 * recency + 0.2 * importance`（可关回关键词）
+- `EMOTE { emoji }`：0 tick，头顶气泡，按视野投递给附近角色
 
 ### v2.6 已交付
 
@@ -73,15 +79,17 @@
 config/           world.yaml agents.yaml runtime.yaml llm.yaml
 godot/scripts/
   main.gd         入口、HUD、G 上帝视角、VISIBLE 裁剪、读档/存档
-  player.gd       移动超时、WAIT、exploration 快照、位置/背包序列化
+  player.gd       移动超时、WAIT、SLEEP、EMOTE 气泡、exploration 快照
   agent/
     decision.gd   LLM 决策 + gate + 邻格会合 redirect
     actions.gd    原语 schema / validate_in_context
-    comm.gd       SAY/GIVE/SHARE_MAP 路由
+    comm.gd       SAY/GIVE/SHARE_MAP/EMOTE 路由
+    memory/       stream + store + embed（哈希向量）
     goals.gd      目标持久化
     coordinator.gd  agent 生命周期 + capture/apply_world
   world/
-    world.gd      地图生成、物品可见性、has_line_of_sight
+    world.gd      地图生成、TileMapLayer、物品可见性、has_line_of_sight
+    pixel_tileset.gd  16×16 atlas
     exploration_map.gd  探索快照 {terrain, tick}
     save_game.gd  单槽 world.json
     clock.gd      restore_tick（不补发错过的 tick）
@@ -99,15 +107,16 @@ data/             运行时，不进 git（含 saves/）
 
 ## 3. 仍可后置
 
-- tileset / 向量记忆
+- 第三方商用 tileset 替换原作图集
+- 海面仍不好看：可参考口袋妖怪水域（大色块、稀疏波光），非当前重点
 
-验收 v2.6：Ctrl+R 新局，跟漫游者在西林转；约 tick 140 风折树。状态栏出现 `过时N`，西林有品红格（上帝视角也会标选中角色的过时记忆）。日志 `windfall` 带改了哪些格。
+验收 v2.7：开局能看出草地/沙滩/水/树/山不是纯色块；`EMOTE` 选中时头顶有气泡（模型不一定会选）；记忆 JSON 带 `embedding` 数组（只在 `data/memory/*.json`，HUD 不显示）。
 
 ---
 
 ## 4. 建议迭代顺序
 
-主线已完。可选：正式 tileset、向量记忆、`EMOTE`。不要做局内回放 UI。
+主线已完。不要做局内回放 UI。
 走路中会并行发起决策，新行动会打断当前走路；LLM 并发默认 4。睡觉/等待不决策，也不记 stuck。
 
 ---
@@ -134,4 +143,4 @@ python tools/digest_session.py data/logs/<session>.jsonl
 
 ---
 
-_最后更新：v2.6 过时迷雾快照。_
+_最后更新：v2.7 像素 tileset、向量记忆、EMOTE。_

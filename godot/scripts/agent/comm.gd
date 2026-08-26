@@ -63,6 +63,17 @@ func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: 
 	return {"ok": true, "error": "", "recipients": recipients.size(), "recipient_ids": recipient_ids}
 
 
+func deliver_emote(speaker: Player, emoji: String, tick: int) -> Dictionary:
+	var mark := emoji.strip_edges()
+	if mark.is_empty():
+		return {"ok": false, "error": "empty emoji"}
+	var recipient_ids: Array = []
+	for p in players_in_perception(speaker):
+		p.receive_emote(str(speaker.agent_id), mark, tick)
+		recipient_ids.append(str(p.agent_id))
+	return {"ok": true, "error": "", "recipient_ids": recipient_ids}
+
+
 func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int) -> Dictionary:
 	var target := to_agent_id.strip_edges()
 	var item := item_id.strip_edges()

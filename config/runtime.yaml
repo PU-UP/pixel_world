@@ -45,6 +45,10 @@ movement:
   stuck_abort_s: 1.5
   stuck_min_displacement_px: 2.0
 
+emote:
+  display_seconds: 2.5
+  max_chars: 8
+
 decision:
   skip_while_walking: false
   repeat_say_block_ticks: 40
@@ -71,6 +75,9 @@ memory:
     recency_weight: 0.3
     similarity_weight: 0.7
     importance_weight: 0.2
+    vector:
+      enabled: true
+      dim: 64
     drop_future_ticks: true
     origin_cluster_tick: 1
     origin_recency_scale: 0.25

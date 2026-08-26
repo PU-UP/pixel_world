@@ -36,6 +36,9 @@ var _last_position: Vector2 = Vector2.ZERO
 var _last_observation_tick: int = -1
 var _observation_text: String = "（尚无观察）"
 var _heard_messages: Array = []
+var _seen_emotes: Array = []
+var _emote_text: String = ""
+var _emote_left: float = 0.0
 var _pending_reply_from: String = ""
 var _pending_reply_text: String = ""
 var _pending_reply_tick: int = -1
@@ -56,6 +59,7 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"share_map": "共享地图",
 	"wait": "等待",
 	"sleep": "睡觉",
+	"emote": "表情",
 	"received": "收到",
 	"heard": "听到",
 }
@@ -332,10 +336,17 @@ func _physics_process(delta: float) -> void:
 	global_position.x = clamp(global_position.x, half, size.x - half)
 	global_position.y = clamp(global_position.y, half, size.y - half)
 
+	if _emote_left > 0.0:
+		_emote_left -= delta
+		if _emote_left <= 0.0:
+			_emote_text = ""
+			_emote_left = 0.0
+		queue_redraw()
+
 	# ---- P1.5 观测/日志 hook ----
 	_refresh_observation_if_needed()
 	_maybe_log_position_change()
-	if _selected or _state == State.SLEEPING or (debug_show_path and not _current_path.is_empty()):
+	if _selected or _state == State.SLEEPING or _emote_left > 0.0 or (debug_show_path and not _current_path.is_empty()):
 		queue_redraw()
 
 func _draw() -> void:
@@ -345,6 +356,8 @@ func _draw() -> void:
 		draw_circle(Vector2(5, -9), 2.0, Color(0.85, 0.9, 1.0, 0.95))
 		draw_circle(Vector2(9, -13), 2.4, Color(0.85, 0.9, 1.0, 0.95))
 		draw_circle(Vector2(13, -17), 2.8, Color(0.85, 0.9, 1.0, 0.95))
+	if not _emote_text.is_empty():
+		_draw_emote_bubble()
 	if not debug_show_path:
 		return
 	if _current_path.is_empty():
@@ -373,6 +386,8 @@ func _pump_next_action() -> void:
 			_start_move_to(_current_action["params"]["x"], _current_action["params"]["y"])
 		AgentActions.KIND_SAY:
 			_execute_say(_current_action)
+		AgentActions.KIND_EMOTE:
+			_execute_emote(_current_action)
 		AgentActions.KIND_PICK_UP:
 			_execute_pick_up(_current_action)
 		AgentActions.KIND_DROP:
@@ -442,6 +457,48 @@ func _execute_say(action: Dictionary) -> void:
 			_log_obs_say(to_s, text_s, tone_s, tick, [], false, err)
 			_log_obs_action(AgentActions.KIND_SAY, p, false, err, err)
 	_pump_next_action()
+
+
+func _execute_emote(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var emoji: String = str(p.get("emoji", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	if emoji.is_empty():
+		_log_action(tick, "emote", "FAILED empty emoji")
+		_log_obs_action(AgentActions.KIND_EMOTE, p, false, "empty emoji")
+		_pump_next_action()
+		return
+	_emote_text = emoji
+	_emote_left = Config.emote_display_seconds()
+	queue_redraw()
+	var seen: Array = []
+	if _comm != null:
+		var res: Dictionary = _comm.deliver_emote(self, emoji, tick)
+		if res.get("ok", false):
+			seen = res.get("recipient_ids", [])
+		else:
+			var err: String = str(res.get("error", "?"))
+			_log_action(tick, "emote", "FAILED %s" % err)
+			_log_obs_action(AgentActions.KIND_EMOTE, p, false, err, err)
+			_pump_next_action()
+			return
+	_log_action(tick, "emote", emoji)
+	_log_obs_action(AgentActions.KIND_EMOTE, p, true, emoji if seen.is_empty() else "%s → %s" % [emoji, ",".join(PackedStringArray(seen))])
+	_pump_next_action()
+
+
+func _draw_emote_bubble() -> void:
+	var font: Font = ThemeDB.fallback_font
+	if font == null:
+		return
+	var font_size: int = 10
+	var sz: Vector2 = font.get_string_size(_emote_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var origin := Vector2(-sz.x * 0.5, -16.0)
+	var pad := Vector2(3.0, 2.0)
+	var rect := Rect2(origin + Vector2(-pad.x, -sz.y - 1.0), sz + pad * 2.0)
+	draw_rect(rect, Color(0.08, 0.08, 0.12, 0.86), true)
+	draw_rect(rect, Color(1.0, 0.95, 0.7, 0.55), false, 1.0)
+	draw_string(font, origin, _emote_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.96, 0.78))
 
 
 func _execute_pick_up(action: Dictionary) -> void:
@@ -687,6 +744,19 @@ func receive_say(from_id: String, text: String, _tone: String, tick: int) -> voi
 	_log_action(tick, "heard", "%s: %s" % [from_id, text])
 
 
+func receive_emote(from_id: String, emoji: String, tick: int) -> void:
+	_seen_emotes.append({"from": from_id, "emoji": emoji, "tick": tick})
+	if _seen_emotes.size() > 6:
+		_seen_emotes.pop_front()
+	_log_action(tick, "emote", "看见 %s %s" % [from_id, emoji])
+
+
+func current_emote() -> String:
+	if _emote_left <= 0.0:
+		return ""
+	return _emote_text
+
+
 func receive_item(from_id: String, item_id: String, tick: int) -> void:
 	inventory.append(item_id)
 	_log_action(tick, "received", "%s gave %s" % [from_id, item_id])
@@ -702,6 +772,15 @@ func get_recent_heard_lines(limit: int = 4) -> PackedStringArray:
 	for i in range(_heard_messages.size() - n, _heard_messages.size()):
 		var m: Dictionary = _heard_messages[i]
 		lines.append("t%d %s说: %s" % [int(m.get("tick", -1)), str(m.get("from", "?")), str(m.get("text", ""))])
+	return lines
+
+
+func get_recent_emote_lines(limit: int = 4) -> PackedStringArray:
+	var lines: PackedStringArray = []
+	var n: int = mini(limit, _seen_emotes.size())
+	for i in range(_seen_emotes.size() - n, _seen_emotes.size()):
+		var m: Dictionary = _seen_emotes[i]
+		lines.append("t%d %s: %s" % [int(m.get("tick", -1)), str(m.get("from", "?")), str(m.get("emoji", ""))])
 	return lines
 
 
@@ -784,6 +863,9 @@ func _refresh_observation_if_needed() -> void:
 			var extra := ""
 			if p.is_sleeping():
 				extra = " 入睡"
+			var face: String = p.current_emote()
+			if not face.is_empty():
+				extra += " %s" % face
 			agent_parts.append("%s@(%d,%d)%s" % [str(p.agent_id), pt.x, pt.y, extra])
 	if agent_parts.size() > 0:
 		_observation_text = "区域=%s | %s | 附近角色: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
@@ -805,6 +887,9 @@ func _refresh_observation_if_needed() -> void:
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | 听到: " + "; ".join(heard)
+	var emotes := get_recent_emote_lines(2)
+	if emotes.size() > 0:
+		_observation_text += " | 表情: " + "; ".join(emotes)
 	if _clock != null and _clock.time_enabled():
 		_observation_text = "%s 下次黎明t%d | %s" % [
 			_clock.format_phase_clock(),

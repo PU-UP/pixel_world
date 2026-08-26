@@ -1,10 +1,10 @@
 class_name MemoryStore
 ##
-## 记忆持久化 — P4 使用 JSON 文件 (data/memory/{agent_id}.json)
-## 接口与 schema 对齐 AGENTS.md, 后续可换 GDSQLite 实现
+## 记忆持久化 — JSON 文件 (data/memory/{agent_id}.json) + 本地哈希向量
 ##
 
 const MemoryImportance = preload("res://scripts/agent/memory/importance.gd")
+const MemoryEmbed = preload("res://scripts/agent/memory/embed.gd")
 
 var agent_id: String = ""
 var _path: String = ""
@@ -39,6 +39,7 @@ func append(entry: Dictionary) -> int:
 		mem["text"] = ""
 	if not mem.has("importance"):
 		mem["importance"] = MemoryImportance.base_for_category(str(mem["category"]))
+	_ensure_embedding(mem)
 	_memories.append(mem)
 	_save()
 	return int(mem["id"])
@@ -98,7 +99,7 @@ func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Arra
 			recency = clampf(1.0 - float(current_tick - mem_tick) / float(time_window), 0.0, 1.0)
 		if cat in collapse and mem_tick <= origin_tick and origin_scale < 1.0:
 			recency *= clampf(origin_scale, 0.0, 1.0)
-		var sim := _text_similarity(query, str(mem.get("text", "")))
+		var sim := _similarity(query, mem as Dictionary)
 		var imp := float(mem.get("importance", 0.1))
 		var score := w_sim * sim + w_rec * recency + w_imp * imp
 		ranked.append({"mem": mem, "score": score})
@@ -158,6 +159,16 @@ func _load() -> void:
 		return
 	_memories = parsed.get("memories", [])
 	_next_id = int(parsed.get("next_id", _memories.size() + 1))
+	var dirty := false
+	for mem in _memories:
+		if typeof(mem) != TYPE_DICTIONARY:
+			continue
+		var row: Dictionary = mem
+		if _needs_embedding(row):
+			_ensure_embedding(row)
+			dirty = true
+	if dirty:
+		_save()
 
 
 func _save() -> void:
@@ -167,6 +178,51 @@ func _save() -> void:
 		return
 	file.store_string(JSON.stringify({"memories": _memories, "next_id": _next_id}))
 	file.close()
+
+
+func _similarity(query: String, mem: Dictionary) -> float:
+	if not _vector_enabled():
+		return _text_similarity(query, str(mem.get("text", "")))
+	var dim: int = _vector_dim()
+	var qv := MemoryEmbed.embed(query, dim)
+	return MemoryEmbed.cosine(qv, _memory_vector(mem, dim))
+
+
+func _memory_vector(mem: Dictionary, dim: int) -> PackedFloat32Array:
+	if mem.has("embedding") and typeof(mem["embedding"]) == TYPE_ARRAY:
+		var stored: Array = mem["embedding"]
+		if stored.size() == dim:
+			return MemoryEmbed.from_array(stored, dim)
+	_ensure_embedding(mem)
+	return MemoryEmbed.from_array(mem.get("embedding", []), dim)
+
+
+func _needs_embedding(mem: Dictionary) -> bool:
+	if not _vector_enabled():
+		return false
+	var dim: int = _vector_dim()
+	return not mem.has("embedding") or typeof(mem["embedding"]) != TYPE_ARRAY or mem["embedding"].size() != dim
+
+
+func _ensure_embedding(mem: Dictionary) -> void:
+	if not _needs_embedding(mem):
+		return
+	var dim: int = _vector_dim()
+	mem["embedding"] = MemoryEmbed.to_array(MemoryEmbed.embed(str(mem.get("text", "")), dim))
+
+
+func _vector_enabled() -> bool:
+	var raw: Variant = Config.memory_retrieval_cfg().get("vector", {})
+	if typeof(raw) != TYPE_DICTIONARY:
+		return true
+	return bool(raw.get("enabled", true))
+
+
+func _vector_dim() -> int:
+	var raw: Variant = Config.memory_retrieval_cfg().get("vector", {})
+	if typeof(raw) != TYPE_DICTIONARY:
+		return 64
+	return maxi(8, int(raw.get("dim", 64)))
 
 
 func _text_similarity(a: String, b: String) -> float:

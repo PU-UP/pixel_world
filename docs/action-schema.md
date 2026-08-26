@@ -35,5 +35,4 @@ class Action:
 
 ## 当前状态
 
-- 已实现：`MOVE_TO` `SAY` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`
-- 未实现：`EMOTE`
+- 已实现：`MOVE_TO` `SAY` `EMOTE` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`

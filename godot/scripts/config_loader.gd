@@ -184,6 +184,18 @@ func memory_retrieval_cfg() -> Dictionary:
 	return memory_cfg().get("retrieval", {})
 
 
+func emote_cfg() -> Dictionary:
+	return runtime.get("emote", {})
+
+
+func emote_display_seconds() -> float:
+	return float(emote_cfg().get("display_seconds", 2.5))
+
+
+func emote_max_chars() -> int:
+	return int(emote_cfg().get("max_chars", 8))
+
+
 func planning_cfg() -> Dictionary:
 	return runtime.get("planning", {})
 

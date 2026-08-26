@@ -1,18 +1,17 @@
 extends Node2D
 class_name GameWorld
 ##
-## 荒岛世界（程序化生成的占位地形，P1 阶段先验证渲染与相机）
-## 真实 TileMap + 美术资源留到 P7 替换。
+## 荒岛世界（程序化生成 + 16×16 像素 TileMapLayer）
 ##
 
 const TILE_SIZE: int = 16
 const WorldStateScript = preload("res://scripts/world/state.gd")
 const WorldEventsScript = preload("res://scripts/world/events.gd")
 const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
+const PixelTileset = preload("res://scripts/world/pixel_tileset.gd")
 var MAP_WIDTH: int = 64   # 瓦片 — 启动时从 config 覆盖
 var MAP_HEIGHT: int = 64  # 瓦片
 
-# 地形调色板（占位色 — P7 替换为 tileset）
 enum Tile { GRASS = 0, SAND = 1, WATER = 2, TREE = 3, MOUNTAIN = 4 }
 const TILE_COLORS := {
 	Tile.GRASS: Color(0.45, 0.72, 0.32),
@@ -33,6 +32,7 @@ var _god_items: bool = true
 var _filter_rev: int = -1
 var tile_revision: int = 0
 var _los_block_ids_cache: Dictionary = {}
+var _terrain_map: TileMapLayer = null
 
 func _ready() -> void:
 	rng = RandomNumberGenerator.new()
@@ -44,6 +44,7 @@ func _ready() -> void:
 	else:
 		rng.seed = 1337
 	_generate_island()
+	_ensure_terrain_map()
 	state = WorldStateScript.new()
 	state.name = "WorldState"
 	add_child(state)
@@ -107,6 +108,7 @@ func set_tile(tile: Vector2i, terrain: int, redraw: bool = true) -> bool:
 		return false
 	_tile_overrides[_tile_key(tile)] = terrain
 	tile_revision += 1
+	_set_terrain_cell(tile, terrain)
 	if redraw:
 		queue_redraw()
 	return true
@@ -116,6 +118,7 @@ func reset_tile_overrides() -> void:
 	_tile_overrides.clear()
 	_exploration_maps.clear()
 	tile_revision += 1
+	_sync_terrain_map()
 	queue_redraw()
 
 
@@ -131,6 +134,7 @@ func restore_tile_overrides(data: Dictionary) -> void:
 	for key in data.keys():
 		_tile_overrides[str(key)] = int(data[key])
 	tile_revision += 1
+	_sync_terrain_map()
 	queue_redraw()
 
 
@@ -338,11 +342,31 @@ func _generate_island() -> void:
 # ------------------------------------------------------------------
 # 渲染
 # ------------------------------------------------------------------
-func _draw() -> void:
+func _ensure_terrain_map() -> void:
+	if _terrain_map == null:
+		_terrain_map = TileMapLayer.new()
+		_terrain_map.name = "Terrain"
+		_terrain_map.z_index = -1
+		_terrain_map.tile_set = PixelTileset.tile_set()
+		add_child(_terrain_map)
+	_sync_terrain_map()
+
+
+func _sync_terrain_map() -> void:
+	if _terrain_map == null:
+		return
 	for y in MAP_HEIGHT:
 		for x in MAP_WIDTH:
-			var rect := Rect2(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-			draw_rect(rect, TILE_COLORS[tile_at_tile(Vector2i(x, y))])
+			_set_terrain_cell(Vector2i(x, y), tile_at_tile(Vector2i(x, y)))
+
+
+func _set_terrain_cell(tile: Vector2i, terrain: int) -> void:
+	if _terrain_map == null:
+		return
+	_terrain_map.set_cell(tile, 0, PixelTileset.atlas_coords(terrain))
+
+
+func _draw() -> void:
 	_draw_ground_items()
 
 
