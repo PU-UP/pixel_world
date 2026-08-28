@@ -156,11 +156,14 @@ func apply_save(data: Dictionary) -> void:
 func _tick_sleep(phase: String) -> void:
 	var drain: Dictionary = _drain_cfg()
 	var restore: float = float(drain.get("energy_sleep_restore", 1.15))
+	var night_window: bool = _is_restorative_sleep_phase(phase)
+	if not night_window:
+		restore *= clampf(float(drain.get("energy_day_sleep_scale", 0.06)), 0.0, 1.0)
 	if satiety < float(Config.vitals_cfg().get("hungry_sleep_below", 25)):
 		restore *= float(drain.get("energy_hungry_sleep_scale", 0.55))
 	energy = minf(energy_ceiling, energy + restore)
 	satiety = maxf(0.0, satiety - float(drain.get("satiety_sleep", 0.18)))
-	if not Config.time_enabled() or phase == "dusk" or phase == "night":
+	if night_window:
 		night_sleep_ticks += 1
 
 
@@ -223,6 +226,12 @@ func _pressure_hint() -> String:
 	if satiety_ceiling < _base_max() - 0.5:
 		return "断食后胃纳变小：连续几天都吃到才会恢复上限"
 	return ""
+
+
+func _is_restorative_sleep_phase(phase: String) -> bool:
+	if not Config.time_enabled():
+		return true
+	return phase == "dusk" or phase == "night"
 
 
 func _clamp_to_ceilings() -> void:

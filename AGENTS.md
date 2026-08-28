@@ -292,7 +292,7 @@ top_k = retrieve(
 每 tick 由代码结算，数字在 `config/runtime.yaml` → `vitals`。
 
 - **当前值**夹在 0 与 **上限**之间。上限可被债务压低，不低于 floor。
-- **睡觉**：按 tick 回复精力；睡觉时饱腹仍慢掉。空肚子睡觉回复打折。黄昏/夜间睡够 `min_night_sleep_ticks` 才算「这一夜睡了」。
+- **睡觉**：不禁止白天睡。黄昏/夜间按 `energy_sleep_restore` 回精力；黎明/白天乘 `energy_day_sleep_scale`（极低）。睡觉时饱腹仍慢掉。空肚子睡觉再打折。只有黄昏/夜间的睡眠 tick 计入 `min_night_sleep_ticks`。
 - **进食**：`USE` 带 `food: true` 的物品（野莓/野坚果/海葡萄）回复饱腹 + 少量精力，**不能代替睡觉**。
 - **黎明结算**（`day_index` 增加时）：
   - 昨夜没睡够：连续未睡夜数 +1，精力上限下降（连续越久罚得越多）

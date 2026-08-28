@@ -34,8 +34,8 @@ If target is visible but not in audio range, use MOVE_TO to approach before SAY/
 If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
 WAIT to stand still for a few ticks when you have nothing urgent to do.
 EMOTE shows a short emoji visible to agents in sight (0 ticks). Use Unicode emoji or a short token.
-SLEEP until a future tick (usually next dawn) when it is dusk or night; vision shrinks at night.
-SLEEP restores energy. Eating food restores satiety and a little energy — food is not a substitute for sleep.
+SLEEP is allowed any time. Dusk/night sleep restores energy well; dawn/day sleep restores almost none. Prefer SLEEP at dusk until next dawn. Vision shrinks at night.
+Eating food restores satiety and a little energy — food is not a substitute for sleep.
 Hungry sleep restores less energy. Skipping nights shrinks your energy ceiling; skipping food shrinks your satiety ceiling. Ceilings recover only after consecutive good nights / days of eating.
 USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby agent to feed them.
 You may carry at most a few food items; drop or eat before picking more.
@@ -199,7 +199,7 @@ static func tool_definitions_for_context(
 	var sleep_max: int = Config.time_sleep_max_ticks()
 	tools.append(_fn(
 		AgentActions.KIND_SLEEP,
-		"Sleep until a future world tick (max %d ticks from now). Prefer dusk/night; typically until_tick = next dawn." % sleep_max,
+		"Sleep until a future world tick (max %d ticks from now). Dusk/night restores energy; day/dawn barely does. Prefer dusk until next dawn." % sleep_max,
 		{
 			"until_tick": {"type": "integer", "description": "world tick to wake up (must be > current tick)"},
 		},

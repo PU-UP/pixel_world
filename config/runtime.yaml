@@ -74,6 +74,7 @@ vitals:
     energy_walk: 0.12
     energy_night_awake: 0.45
     energy_sleep_restore: 1.15
+    energy_day_sleep_scale: 0.06
     energy_hungry_sleep_scale: 0.55
     satiety_idle: 0.32
     satiety_walk: 0.06
