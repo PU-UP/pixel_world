@@ -5,7 +5,7 @@
 
 ---
 
-## 1. 当前版本快照（v2.7）
+## 1. 当前版本快照（v2.8）
 
 | 项 | 说明 |
 |---|---|
@@ -17,6 +17,13 @@
 | **操控** | 默认自主；F3 切手动；续局记住上次 F3 |
 | **续局** | `data/saves/world.json`；关游戏再开接续世界。Ctrl+R 开新局 |
 | **感知** | 视野半径 + 树/山视线遮挡；夜间视野缩小；SAY 仍按听觉半径；EMOTE 按视野 |
+
+### v2.8 已交付
+
+- 精力 / 饱腹：当前值 + 可被债务压低的上限；黎明结算睡眠债与断食债
+- `SLEEP` 回精力（饿着睡打折）；`USE` 野果回饱腹和少量精力
+- 野莓 / 野坚果 / 海葡萄按地形刷新；食物背包上限 3
+- 每个角色头顶精力条（白刻度=上限），细条为饱腹；HUD / 侧栏同步
 
 ### v2.7 已交付
 
@@ -86,6 +93,7 @@ godot/scripts/
     comm.gd       SAY/GIVE/SHARE_MAP/EMOTE 路由
     memory/       stream + store + embed（哈希向量）
     goals.gd      目标持久化
+    vitals.gd     精力/饱腹
     coordinator.gd  agent 生命周期 + capture/apply_world
   world/
     world.gd      地图生成、TileMapLayer、物品可见性、has_line_of_sight
@@ -109,6 +117,8 @@ data/             运行时，不进 git（含 saves/）
 
 - 第三方商用 tileset 替换原作图集
 - 海面仍不好看：可参考口袋妖怪水域（大色块、稀疏波光），非当前重点
+
+验收 v2.8：开局头顶有绿/黄精力条；挨饿或熬夜后白刻度左移（上限变矮）；地上会再长出野果；捡第四个食物应失败。
 
 验收 v2.7：开局能看出草地/沙滩/水/树/山不是纯色块；`EMOTE` 选中时头顶有气泡（模型不一定会选）；记忆 JSON 带 `embedding` 数组（只在 `data/memory/*.json`，HUD 不显示）。
 
@@ -143,4 +153,4 @@ python tools/digest_session.py data/logs/<session>.jsonl
 
 ---
 
-_最后更新：v2.7 像素 tileset、向量记忆、EMOTE。_
+_最后更新：v2.8 精力/饱腹、野果刷新、头顶条。_

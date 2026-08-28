@@ -4,6 +4,21 @@ world:
   map_height: 96
   seed: 1337
   item_pickup_radius: 1
+  food_spawn:
+    interval_ticks: 72
+    max_ground: 12
+    per_wave: 2
+    attempts: 40
+    pool:
+      - item: berry_bush
+        weight: 3
+        terrains: [grass]
+      - item: wild_nut
+        weight: 2
+        terrains: [grass]
+      - item: beach_grape
+        weight: 2
+        terrains: [sand]
 
 items:
   driftwood:
@@ -18,10 +33,31 @@ items:
     use_text: "把贝壳翻来覆去看了看。"
   berry_bush:
     display_name: "野莓"
-    description: "野生可食用的浆果。"
+    description: "野生浆果，能填一点肚子，稍补精力。"
     color: [0.72, 0.18, 0.35]
+    food: true
     consumable: true
-    use_text: "吃了几颗野莓，精神好了一些。"
+    satiety_restore: 28
+    energy_restore: 8
+    use_text: "吃了几颗野莓，肚子暖了一些。"
+  wild_nut:
+    display_name: "野坚果"
+    description: "林间掉落的小坚果，顶饿有限，略提神。"
+    color: [0.62, 0.42, 0.22]
+    food: true
+    consumable: true
+    satiety_restore: 16
+    energy_restore: 12
+    use_text: "啃了几颗野坚果，嘴里发涩，精神好了一点。"
+  beach_grape:
+    display_name: "海葡萄"
+    description: "沙滩边的小果，水分多，不太顶饿。"
+    color: [0.28, 0.62, 0.42]
+    food: true
+    consumable: true
+    satiety_restore: 22
+    energy_restore: 6
+    use_text: "吃了几颗海葡萄，嘴里发咸，解渴多过顶饱。"
   flint:
     display_name: "燧石"
     description: "锋利的石头，可做工具。"
@@ -44,6 +80,10 @@ ground_items:
     tile: [33, 57]
   - item: berry_bush
     tile: [60, 54]
+  - item: wild_nut
+    tile: [30, 50]
+  - item: beach_grape
+    tile: [50, 74]
   - item: flint
     tile: [48, 42]
   - item: rope

@@ -13,7 +13,7 @@
 | `OBSERVE` | `target` | 1 | 否 | 仅自己 |
 | `PICK_UP` | `item_id` | 1 | 否 | 视野内 |
 | `DROP` | `item_id` | 0 | 是 | 视野内 |
-| `USE` | `item_id, on` | 1 | 否 | 视野内 |
+| `USE` | `item_id, on` | 1 | 否 | 视野内；食物会改精力/饱腹 |
 | `GIVE` | `item_id, to` | 1 | 否 | 双方可见 |
 | `SLEEP` | `until_tick` | 睡到该 tick | 否 | 视野内可见入睡 |
 | `WAIT` | `ticks` | 指定 tick | 是 | 视野内可见"发呆" |
@@ -36,3 +36,4 @@ class Action:
 ## 当前状态
 
 - 已实现：`MOVE_TO` `SAY` `EMOTE` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`
+- `USE` 食物（`food: true`）回复饱腹和少量精力；食物背包有上限；连续熬夜/断食会压低上限

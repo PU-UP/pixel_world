@@ -338,6 +338,7 @@ func _build_agent_snapshots() -> Array:
 			"inventory": player.inventory.duplicate(),
 			"state": player.busy_state(),
 			"queue_len": player.queued_action_count(),
+			"vitals": player.vitals.capture_save() if player.vitals.enabled() else {},
 		})
 	return rows
 

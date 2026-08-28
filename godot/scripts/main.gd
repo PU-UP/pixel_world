@@ -77,6 +77,7 @@ func _ready() -> void:
 	_coordinator.setup(_world, _clock, _llm, _logger, _agents_root, self)
 	_llm.set_logger(_logger)
 	_world.events.setup(_world, _clock)
+	_world.state.bind_clock(_clock)
 	if not _world.events.event_fired.is_connected(_on_world_event):
 		_world.events.event_fired.connect(_on_world_event)
 	_coordinator.roster_changed.connect(_on_roster_changed)
@@ -366,8 +367,16 @@ func _update_roster_hud() -> void:
 			if goal.length() > 18:
 				goal = goal.substr(0, 17) + "…"
 		var name_s: String = str(rec["persona"].display_name)
-		lines.append("%s%s %s (%d,%d) %s %s" % [
-			mark, name_s, p.busy_state(), tile.x, tile.y, region, vis,
+		var vitals_s := ""
+		if p.vitals.enabled():
+			vitals_s = " 力%d/%d 饱%d/%d" % [
+				int(round(p.vitals.energy)),
+				int(round(p.vitals.energy_ceiling)),
+				int(round(p.vitals.satiety)),
+				int(round(p.vitals.satiety_ceiling)),
+			]
+		lines.append("%s%s %s (%d,%d) %s %s%s" % [
+			mark, name_s, p.busy_state(), tile.x, tile.y, region, vis, vitals_s,
 		])
 		if not goal.is_empty():
 			lines.append("  %s" % goal)

@@ -261,9 +261,12 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 		KIND_PICK_UP:
 			var item_id: String = str(params.get("item", "")).strip_edges()
 			var pickup_ids: Array = ctx.get("pickup_item_ids", [])
-			if _contains_id(pickup_ids, item_id):
-				return {"ok": true, "error": "", "hint": ""}
-			return {"ok": false, "error": "item not in pickup range: %s" % item_id, "hint": ""}
+			if not _contains_id(pickup_ids, item_id):
+				return {"ok": false, "error": "item not in pickup range: %s" % item_id, "hint": ""}
+			var inv_p: Array = ctx.get("inventory", [])
+			if not Config.can_carry_item(inv_p, item_id):
+				return {"ok": false, "error": "food inventory full (max %d)" % Config.vitals_food_inventory_max(), "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
 		KIND_GIVE:
 			var to_give: String = str(params.get("to", "")).strip_edges()
 			var item_g: String = str(params.get("item", "")).strip_edges()
@@ -274,6 +277,9 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 				var inv: Array = ctx.get("inventory", [])
 				if not _contains_id(inv, item_g):
 					return {"ok": false, "error": "not carrying item: %s" % item_g, "hint": ""}
+				var full_ids: Array = ctx.get("food_full_agent_ids", [])
+				if Config.item_is_food(item_g) and _contains_id(full_ids, to_give):
+					return {"ok": false, "error": "receiver food inventory full", "hint": ""}
 				return {"ok": true, "error": "", "hint": ""}
 			var perception_g: Array = ctx.get("perception_agent_ids", [])
 			if _contains_id(perception_g, to_give):
@@ -343,11 +349,14 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 			if not pid.is_empty():
 				pickup_item_ids.append(pid)
 	var occupied_tiles: Array = []
+	var food_full_agent_ids: Array = []
 	if comm != null:
 		for p in comm.all_players():
 			if p == player:
 				continue
 			occupied_tiles.append(_tile_key(p.get_tile_position()))
+			if Config.food_count_in(p.inventory) >= Config.vitals_food_inventory_max():
+				food_full_agent_ids.append(str(p.agent_id))
 	return {
 		"perception_agent_ids": perception_ids,
 		"audio_agent_ids": audio_ids,
@@ -359,6 +368,7 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 		"world": world,
 		"blocked_move_tiles": [],
 		"occupied_tiles": occupied_tiles,
+		"food_full_agent_ids": food_full_agent_ids,
 		"wait_max_ticks": Config.decision_wait_max_ticks(),
 		"sleep_max_ticks": Config.time_sleep_max_ticks(),
 		"emote_max_chars": Config.emote_max_chars(),

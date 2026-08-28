@@ -12,6 +12,7 @@ const GameClock = preload("res://scripts/world/clock.gd")
 const AStarPathfinder = preload("res://scripts/world/pathfinding.gd")
 const AgentActions = preload("res://scripts/agent/actions.gd")
 const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
+const AgentVitals = preload("res://scripts/agent/vitals.gd")
 
 const TILE_SIZE: int = GameWorld.TILE_SIZE
 
@@ -45,6 +46,7 @@ var _pending_reply_tick: int = -1
 var _last_say_text: String = ""
 var _last_say_tick: int = -1
 var inventory: Array = []
+var vitals: AgentVitals = AgentVitals.new()
 var exploration: ExplorationMap = ExplorationMap.new()
 var action_log: Array = []
 
@@ -135,6 +137,7 @@ func _apply_runtime_config() -> void:
 
 func _ready() -> void:
 	_apply_runtime_config()
+	vitals.reset()
 	collision_layer = 1
 	collision_mask = 0
 	_rebuild_sprite()
@@ -178,6 +181,7 @@ func capture_save() -> Dictionary:
 		"tile": [tile.x, tile.y],
 		"inventory": inventory.duplicate(),
 		"exploration": exploration.to_dict(),
+		"vitals": vitals.capture_save(),
 	}
 	if _state == State.SLEEPING and _sleep_until_tick > 0:
 		data["sleep_until_tick"] = _sleep_until_tick
@@ -203,6 +207,11 @@ func apply_save(row: Dictionary, restore_exploration: bool = true) -> void:
 		var expl: Variant = row.get("exploration", {})
 		if typeof(expl) == TYPE_DICTIONARY:
 			exploration.from_dict(expl)
+	var vitals_raw: Variant = row.get("vitals", {})
+	if typeof(vitals_raw) == TYPE_DICTIONARY:
+		vitals.apply_save(vitals_raw)
+	else:
+		vitals.reset()
 	_last_observation_tick = -1
 	if _world != null:
 		var now: int = _clock.current_tick() if _clock != null else 0
@@ -352,10 +361,11 @@ func _physics_process(delta: float) -> void:
 func _draw() -> void:
 	if _selected:
 		draw_arc(Vector2.ZERO, TILE_SIZE * 0.55, 0.0, TAU, 24, Color(1.0, 0.95, 0.3, 0.85), 2.0)
+	_draw_vital_bars()
 	if _state == State.SLEEPING:
-		draw_circle(Vector2(5, -9), 2.0, Color(0.85, 0.9, 1.0, 0.95))
-		draw_circle(Vector2(9, -13), 2.4, Color(0.85, 0.9, 1.0, 0.95))
-		draw_circle(Vector2(13, -17), 2.8, Color(0.85, 0.9, 1.0, 0.95))
+		draw_circle(Vector2(10, -8), 2.0, Color(0.85, 0.9, 1.0, 0.95))
+		draw_circle(Vector2(13, -12), 2.4, Color(0.85, 0.9, 1.0, 0.95))
+		draw_circle(Vector2(16, -16), 2.8, Color(0.85, 0.9, 1.0, 0.95))
 	if not _emote_text.is_empty():
 		_draw_emote_bubble()
 	if not debug_show_path:
@@ -493,12 +503,78 @@ func _draw_emote_bubble() -> void:
 		return
 	var font_size: int = 10
 	var sz: Vector2 = font.get_string_size(_emote_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var origin := Vector2(-sz.x * 0.5, -16.0)
+	var origin := Vector2(-sz.x * 0.5, -20.0)
 	var pad := Vector2(3.0, 2.0)
 	var rect := Rect2(origin + Vector2(-pad.x, -sz.y - 1.0), sz + pad * 2.0)
 	draw_rect(rect, Color(0.08, 0.08, 0.12, 0.86), true)
 	draw_rect(rect, Color(1.0, 0.95, 0.7, 0.55), false, 1.0)
 	draw_string(font, origin, _emote_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.96, 0.78))
+
+
+func _draw_vital_bars() -> void:
+	if not vitals.enabled():
+		return
+	var origin := Vector2(-7.0, -11.0)
+	if Config.vitals_bar_energy():
+		_draw_meter_bar(
+			origin,
+			vitals.energy_fill_of_base(),
+			vitals.ceiling_fill_of_base(),
+			vitals.energy_ratio(),
+			3.0,
+		)
+		origin.y += 4.0
+	if Config.vitals_bar_satiety():
+		_draw_meter_bar(
+			origin,
+			vitals.satiety_fill_of_base(),
+			clampf(vitals.satiety_ceiling / maxf(1.0, float(Config.vitals_cfg().get("base_max", 100))), 0.0, 1.0),
+			vitals.satiety_ratio(),
+			1.5,
+			true,
+		)
+
+
+func _draw_meter_bar(
+	origin: Vector2,
+	fill_of_base: float,
+	ceiling_of_base: float,
+	feel_ratio: float,
+	height: float,
+	satiety: bool = false,
+) -> void:
+	var width: float = 14.0
+	var border := Rect2(origin, Vector2(width, height))
+	draw_rect(border, Color(0.05, 0.05, 0.07, 0.9), true)
+	var inner := Rect2(origin + Vector2(1.0, 0.5), Vector2(width - 2.0, height - 1.0))
+	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
+		return
+	draw_rect(inner, Color(0.18, 0.16, 0.16, 0.85), true)
+	var ceil_w: float = inner.size.x * clampf(ceiling_of_base, 0.0, 1.0)
+	var fill_w: float = inner.size.x * clampf(fill_of_base, 0.0, 1.0)
+	var fill_color: Color
+	if satiety:
+		fill_color = Color(0.92, 0.55, 0.18).lerp(Color(0.95, 0.78, 0.28), clampf(feel_ratio, 0.0, 1.0))
+		if feel_ratio < 0.35:
+			fill_color = Color(0.82, 0.28, 0.12)
+	else:
+		if feel_ratio < 0.28:
+			fill_color = Color(0.86, 0.2, 0.16)
+		elif feel_ratio < 0.55:
+			fill_color = Color(0.92, 0.78, 0.18)
+		else:
+			fill_color = Color(0.32, 0.82, 0.38)
+	if fill_w > 0.05:
+		draw_rect(Rect2(inner.position, Vector2(fill_w, inner.size.y)), fill_color, true)
+	if ceil_w > 1.0 and ceil_w < inner.size.x - 0.5:
+		var tick_x: float = inner.position.x + ceil_w
+		draw_line(
+			Vector2(tick_x, inner.position.y - 0.5),
+			Vector2(tick_x, inner.position.y + inner.size.y + 0.5),
+			Color(1.0, 1.0, 1.0, 0.7),
+			1.0,
+		)
+	draw_rect(border, Color(0.02, 0.02, 0.03, 0.95), false, 1.0)
 
 
 func _execute_pick_up(action: Dictionary) -> void:
@@ -508,6 +584,9 @@ func _execute_pick_up(action: Dictionary) -> void:
 	if _world == null or _world.state == null:
 		_log_action(tick, "pickup", "FAILED no world state")
 		_log_obs_action(AgentActions.KIND_PICK_UP, p, false, "no world state")
+	elif not Config.can_carry_item(inventory, item_id):
+		_log_action(tick, "pickup", "FAILED food inventory full")
+		_log_obs_action(AgentActions.KIND_PICK_UP, p, false, "food inventory full")
 	else:
 		var res: Dictionary = _world.state.try_pick_up(get_tile_position(), item_id)
 		if res.get("ok", false):
@@ -594,9 +673,28 @@ func _execute_use(action: Dictionary) -> void:
 		var defs: Dictionary = Config.world_item_defs()
 		var def: Dictionary = defs.get(item_id, {})
 		var text: String = str(def.get("use_text", "used %s" % item_id))
-		if on_target not in ["self", str(agent_id)]:
+		var fed: Player = _resolve_feed_target(on_target)
+		if Config.item_is_food(item_id) and fed != null and fed.vitals.enabled():
+			var eaten: Dictionary = fed.vitals.eat(
+				float(def.get("satiety_restore", 0)),
+				float(def.get("energy_restore", 0)),
+			)
+			if fed != self:
+				text = "%s（喂给 %s）精力+%d 饱腹+%d" % [
+					text, str(fed.agent_id),
+					int(round(float(eaten.get("energy_delta", 0)))),
+					int(round(float(eaten.get("satiety_delta", 0)))),
+				]
+			else:
+				text = "%s 精力+%d 饱腹+%d" % [
+					text,
+					int(round(float(eaten.get("energy_delta", 0)))),
+					int(round(float(eaten.get("satiety_delta", 0)))),
+				]
+			fed.queue_redraw()
+		elif on_target not in ["self", str(agent_id)]:
 			text = "%s (on %s)" % [text, on_target]
-		if bool(def.get("consumable", false)):
+		if bool(def.get("consumable", false)) or Config.item_is_food(item_id):
 			inventory.erase(item_id)
 		_log_action(tick, "use", text)
 		_log_obs_action(AgentActions.KIND_USE, p, true, text)
@@ -694,6 +792,19 @@ func _on_clock_tick(_tick_index: int) -> void:
 		if p != _last_phase:
 			_last_phase = p
 			_last_observation_tick = -1
+	var still_sleeping: bool = (
+		_state == State.SLEEPING
+		and _clock != null
+		and _clock.current_tick() < _sleep_until_tick
+	)
+	vitals.on_tick(
+		_clock.day_index() if _clock != null else 0,
+		_clock.phase() if _clock != null else "day",
+		still_sleeping,
+		_state == State.WALKING,
+	)
+	if vitals.enabled():
+		queue_redraw()
 	if _state == State.WAITING:
 		_wait_remaining -= 1
 		if _wait_remaining > 0:
@@ -734,6 +845,17 @@ func _use_target_valid(on_target: String) -> bool:
 	return false
 
 
+func _resolve_feed_target(on_target: String) -> Player:
+	if on_target.is_empty() or on_target in ["self", str(agent_id)]:
+		return self
+	if _comm == null:
+		return self
+	for other in _comm.players_in_perception(self):
+		if str(other.agent_id) == on_target:
+			return other
+	return self
+
+
 func receive_say(from_id: String, text: String, _tone: String, tick: int) -> void:
 	_heard_messages.append({"from": from_id, "text": text, "tick": tick})
 	if _heard_messages.size() > 6:
@@ -760,6 +882,14 @@ func current_emote() -> String:
 func receive_item(from_id: String, item_id: String, tick: int) -> void:
 	inventory.append(item_id)
 	_log_action(tick, "received", "%s gave %s" % [from_id, item_id])
+
+
+func can_accept_item(item_id: String) -> bool:
+	return Config.can_carry_item(inventory, item_id)
+
+
+func food_count() -> int:
+	return Config.food_count_in(inventory)
 
 
 func receive_share_offer(from_id: String, tick: int) -> void:
@@ -796,7 +926,7 @@ func _advance_along_path(delta: float) -> void:
 		_path_idx += 1
 		return
 	dir = dir / dist
-	velocity = dir * move_speed_px
+	velocity = dir * move_speed_px * vitals.move_speed_scale()
 	move_and_slide()
 	var cfg: Dictionary = Config.movement_cfg()
 	var abort_s: float = float(cfg.get("stuck_abort_s", 1.5))
@@ -863,6 +993,11 @@ func _refresh_observation_if_needed() -> void:
 			var extra := ""
 			if p.is_sleeping():
 				extra = " 入睡"
+			if p.vitals.enabled():
+				if p.vitals.is_tired():
+					extra += " 疲惫"
+				if p.vitals.is_hungry():
+					extra += " 饥饿"
 			var face: String = p.current_emote()
 			if not face.is_empty():
 				extra += " %s" % face
@@ -1030,7 +1165,14 @@ func get_status_line() -> String:
 	var time_s := ""
 	if _clock != null and _clock.time_enabled():
 		time_s = "  %s" % _clock.format_phase_clock()
-	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s%s" % [
+	var vitals_s := ""
+	if vitals.enabled():
+		vitals_s = "  %s  食物%d/%d" % [
+			vitals.format_status(),
+			food_count(),
+			Config.vitals_food_inventory_max(),
+		]
+	return "角色=%s  状态=%s  队列=%d  背包=%s  坐标=(%d,%d)  地形=%s%s%s" % [
 		str(agent_id),
 		state_zh,
 		queue_n,
@@ -1039,6 +1181,7 @@ func get_status_line() -> String:
 		tile_y,
 		_tile_name(t),
 		time_s,
+		vitals_s,
 	]
 
 
@@ -1054,10 +1197,12 @@ func get_nearby_item_lines() -> PackedStringArray:
 		return lines
 	for item in _world.state.items_near(get_tile_position(), Config.world_item_pickup_radius() + 1):
 		var t: Vector2i = item.get("tile", Vector2i.ZERO)
-		lines.append("%s（%s）在 (%d,%d)" % [
+		lines.append("%s（%s）在 (%d,%d)%s" % [
 			str(item.get("item_id", "")),
 			str(item.get("display_name", "")),
-			t.x, t.y,
+			t.x,
+			t.y,
+			" 可食用" if Config.item_is_food(str(item.get("item_id", ""))) else "",
 		])
 	return lines
 

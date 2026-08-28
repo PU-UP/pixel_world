@@ -49,6 +49,36 @@ emote:
   display_seconds: 2.5
   max_chars: 8
 
+vitals:
+  enabled: true
+  base_max: 100
+  energy_floor: 40
+  satiety_floor: 35
+  hungry_sleep_below: 25
+  low_energy_speed_below: 18
+  low_energy_speed_scale: 0.72
+  min_night_sleep_ticks: 36
+  missed_night_energy_penalty: 10
+  extra_night_energy_penalty: 4
+  slept_night_energy_recover: 6
+  missed_day_satiety_penalty: 12
+  extra_day_satiety_penalty: 5
+  ate_day_satiety_recover: 7
+  missed_day_energy_penalty: 4
+  food_inventory_max: 3
+  bar:
+    energy: true
+    satiety: true
+  drain:
+    energy_idle: 0.28
+    energy_walk: 0.12
+    energy_night_awake: 0.45
+    energy_sleep_restore: 1.15
+    energy_hungry_sleep_scale: 0.55
+    satiety_idle: 0.32
+    satiety_walk: 0.06
+    satiety_sleep: 0.18
+
 decision:
   skip_while_walking: false
   repeat_say_block_ticks: 40

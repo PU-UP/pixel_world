@@ -78,6 +78,7 @@ func _init() -> void:
 		"res://scripts/main.gd",
 		"res://scripts/world/clock.gd",
 		"res://scripts/agent/persona.gd",
+		"res://scripts/agent/vitals.gd",
 	]:
 		if load(path) != null:
 			passed += 1

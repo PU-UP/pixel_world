@@ -35,6 +35,10 @@ If someone spoke to you (=== Pending reply ===), respond with SAY using NEW word
 WAIT to stand still for a few ticks when you have nothing urgent to do.
 EMOTE shows a short emoji visible to agents in sight (0 ticks). Use Unicode emoji or a short token.
 SLEEP until a future tick (usually next dawn) when it is dusk or night; vision shrinks at night.
+SLEEP restores energy. Eating food restores satiety and a little energy — food is not a substitute for sleep.
+Hungry sleep restores less energy. Skipping nights shrinks your energy ceiling; skipping food shrinks your satiety ceiling. Ceilings recover only after consecutive good nights / days of eating.
+USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby agent to feed them.
+You may carry at most a few food items; drop or eat before picking more.
 SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
 Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
 Respond ONLY via tool/function call — no free-form answer."""
@@ -136,7 +140,7 @@ static func tool_definitions_for_context(
 	if pickup_item_ids.size() > 0:
 		tools.append(_fn(
 			AgentActions.KIND_PICK_UP,
-			"Pick up a ground item within 1 tile",
+			"Pick up a ground item within 1 tile (food inventory is capped)",
 			{
 				"item": {"type": "string", "enum": _array_from_packed(pickup_item_ids)},
 			},
@@ -157,7 +161,7 @@ static func tool_definitions_for_context(
 			use_on.append(id)
 		tools.append(_fn(
 			AgentActions.KIND_USE,
-			"Use an inventory item",
+			"Use an inventory item. Food restores satiety and a little energy (on self or a nearby agent).",
 			{
 				"item": {"type": "string", "enum": inv_enum},
 				"on": {"type": "string", "enum": use_on},

@@ -184,6 +184,61 @@ func memory_retrieval_cfg() -> Dictionary:
 	return memory_cfg().get("retrieval", {})
 
 
+func vitals_cfg() -> Dictionary:
+	return runtime.get("vitals", {})
+
+
+func vitals_enabled() -> bool:
+	return bool(vitals_cfg().get("enabled", true))
+
+
+func vitals_food_inventory_max() -> int:
+	return maxi(1, int(vitals_cfg().get("food_inventory_max", 3)))
+
+
+func vitals_bar_energy() -> bool:
+	var bar: Variant = vitals_cfg().get("bar", {})
+	if typeof(bar) != TYPE_DICTIONARY:
+		return true
+	return bool(bar.get("energy", true))
+
+
+func vitals_bar_satiety() -> bool:
+	var bar: Variant = vitals_cfg().get("bar", {})
+	if typeof(bar) != TYPE_DICTIONARY:
+		return true
+	return bool(bar.get("satiety", true))
+
+
+func item_def(item_id: String) -> Dictionary:
+	var defs: Dictionary = world_item_defs()
+	var raw: Variant = defs.get(item_id, {})
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
+
+
+func item_is_food(item_id: String) -> bool:
+	return bool(item_def(item_id).get("food", false))
+
+
+func food_count_in(inventory: Array) -> int:
+	var n: int = 0
+	for raw in inventory:
+		if item_is_food(str(raw)):
+			n += 1
+	return n
+
+
+func can_carry_item(inventory: Array, item_id: String) -> bool:
+	if not item_is_food(item_id):
+		return true
+	return food_count_in(inventory) < vitals_food_inventory_max()
+
+
+func world_food_spawn_cfg() -> Dictionary:
+	var raw: Variant = world_cfg.get("food_spawn", {})
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
+
+
 func emote_cfg() -> Dictionary:
 	return runtime.get("emote", {})
 

@@ -17,6 +17,14 @@ func setup(world: GameWorld) -> void:
 	_spawn_ground_items()
 
 
+func bind_clock(clock) -> void:
+	if clock == null:
+		return
+	if clock.tick.is_connected(_on_clock_tick):
+		return
+	clock.tick.connect(_on_clock_tick)
+
+
 func reset() -> void:
 	_spawn_ground_items()
 
@@ -203,6 +211,121 @@ func _spawn_ground_items() -> void:
 			"display_name": str(def.get("display_name", item_id)),
 		}
 	ground_item_changed.emit()
+
+
+func ground_food_count() -> int:
+	var n: int = 0
+	for item in all_ground_items():
+		if Config.item_is_food(str(item.get("item_id", ""))):
+			n += 1
+	return n
+
+
+func _on_clock_tick(tick_index: int) -> void:
+	_maybe_spawn_food(tick_index)
+
+
+func _maybe_spawn_food(tick_index: int) -> void:
+	var cfg: Dictionary = Config.world_food_spawn_cfg()
+	if cfg.is_empty():
+		return
+	var interval: int = maxi(1, int(cfg.get("interval_ticks", 72)))
+	if tick_index <= 0 or tick_index % interval != 0:
+		return
+	var max_ground: int = maxi(0, int(cfg.get("max_ground", 12)))
+	var per_wave: int = maxi(1, int(cfg.get("per_wave", 2)))
+	var attempts: int = maxi(8, int(cfg.get("attempts", 40)))
+	var pool: Variant = cfg.get("pool", [])
+	if typeof(pool) != TYPE_ARRAY or pool.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _food_spawn_seed(tick_index)
+	var spawned: int = 0
+	var fails: int = 0
+	while spawned < per_wave and ground_food_count() < max_ground:
+		var entry: Dictionary = _pick_food_pool(pool, rng)
+		if entry.is_empty():
+			break
+		var item_id: String = str(entry.get("item", "")).strip_edges()
+		if item_id.is_empty() or not Config.item_is_food(item_id):
+			fails += 1
+			if fails >= per_wave * 3:
+				break
+			continue
+		var terrains: Array = entry.get("terrains", ["grass", "sand"])
+		var tile: Vector2i = _find_food_tile(terrains, rng, attempts)
+		if tile.x < 0:
+			fails += 1
+			if fails >= per_wave * 3:
+				break
+			continue
+		var def: Dictionary = Config.item_def(item_id)
+		_ground[_tile_key(tile)] = {
+			"item_id": item_id,
+			"display_name": str(def.get("display_name", item_id)),
+		}
+		spawned += 1
+	if spawned > 0:
+		ground_item_changed.emit()
+
+
+func _pick_food_pool(pool: Array, rng: RandomNumberGenerator) -> Dictionary:
+	var total: int = 0
+	var rows: Array = []
+	for raw in pool:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var weight: int = maxi(1, int(raw.get("weight", 1)))
+		total += weight
+		rows.append({"entry": raw, "weight": weight})
+	if total <= 0 or rows.is_empty():
+		return {}
+	var roll: int = rng.randi_range(1, total)
+	var acc: int = 0
+	for row in rows:
+		acc += int(row["weight"])
+		if roll <= acc:
+			return row["entry"]
+	return rows[-1]["entry"]
+
+
+func _find_food_tile(terrains: Array, rng: RandomNumberGenerator, attempts: int) -> Vector2i:
+	if _world == null:
+		return Vector2i(-1, -1)
+	var allowed: Dictionary = {}
+	for name in terrains:
+		allowed[_terrain_id(str(name))] = true
+	for _i in attempts:
+		var tile := Vector2i(rng.randi_range(0, _world.MAP_WIDTH - 1), rng.randi_range(0, _world.MAP_HEIGHT - 1))
+		if not _world.is_walkable_tile(tile):
+			continue
+		if not allowed.has(_world.tile_at_tile(tile)):
+			continue
+		if _ground.has(_tile_key(tile)):
+			continue
+		return tile
+	return Vector2i(-1, -1)
+
+
+func _terrain_id(name: String) -> int:
+	match name.strip_edges().to_lower():
+		"sand":
+			return GameWorld.Tile.SAND
+		"water":
+			return GameWorld.Tile.WATER
+		"tree":
+			return GameWorld.Tile.TREE
+		"mountain":
+			return GameWorld.Tile.MOUNTAIN
+		_:
+			return GameWorld.Tile.GRASS
+
+
+func _food_spawn_seed(tick_index: int) -> int:
+	var base: int = 1337
+	if _world != null and _world.rng != null:
+		base = int(_world.rng.seed)
+	return base + tick_index * 17
 
 
 func _tile_key(tile: Vector2i) -> String:
