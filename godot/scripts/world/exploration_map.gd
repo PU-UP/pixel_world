@@ -70,6 +70,16 @@ func visible_count() -> int:
 	return _visible.size()
 
 
+func explored_tiles() -> Array:
+	var out: Array = []
+	for key in _explored.keys():
+		var parts: PackedStringArray = str(key).split(",")
+		if parts.size() < 2:
+			continue
+		out.append(Vector2i(int(parts[0]), int(parts[1])))
+	return out
+
+
 func get_state(x: int, y: int) -> int:
 	var key: String = _key(x, y)
 	if _visible.has(key):

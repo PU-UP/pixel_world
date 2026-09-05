@@ -21,6 +21,8 @@ static func parse_response(body: Dictionary) -> Dictionary:
 	var args_raw: String = str(fn.get("arguments", "{}"))
 	var parsed: Variant = JSON.parse_string(args_raw)
 	var args: Dictionary = normalize_tool_args(kind, parsed)
+	if kind == AgentActions.KIND_PICK_UP and args.has("item"):
+		args["item"] = AgentActions.normalize_pickup_item(str(args.get("item", "")))
 	if args.is_empty() and typeof(parsed) != TYPE_DICTIONARY:
 		return _fail("tool arguments not a JSON object: %s" % args_raw, str(message.get("content", "")))
 	var action := {"kind": kind, "params": args}

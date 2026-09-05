@@ -22,6 +22,7 @@ var _busy: bool = false
 var _last_reflection: String = ""
 var _ticks_since_reflection: int = 0
 var enabled: bool = true
+var _player = null
 
 
 func setup(
@@ -30,12 +31,14 @@ func setup(
 	llm: LlmClientScript,
 	persona: PersonaScript,
 	agent_id: String = "",
+	player = null,
 ) -> void:
 	_memory = memory
 	_clock = clock
 	_llm = llm
 	_persona = persona
 	_agent_id = agent_id if not agent_id.is_empty() else str(persona.agent_id)
+	_player = player
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -61,6 +64,8 @@ func _on_memory_added(mem: Dictionary) -> void:
 func _on_tick(_tick_index: int) -> void:
 	if not enabled or _clock.paused:
 		return
+	if _player != null and _player.is_dead():
+		return
 	_ticks_since_reflection += 1
 	_memory.maybe_decay(_clock.current_tick())
 	var cfg := Config.memory_reflection_cfg()
@@ -77,7 +82,9 @@ func _maybe_trigger_reflection() -> void:
 
 
 func _request_reflection() -> void:
-	if _busy or not _llm.is_configured():
+	if not enabled or _busy or not _llm.is_configured():
+		return
+	if _player != null and _player.is_dead():
 		return
 	var lookback: int = int(Config.memory_reflection_cfg().get("lookback", 50))
 	var recent := _memory.get_recent(lookback)

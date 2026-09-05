@@ -1,7 +1,8 @@
 extends Node
 class_name CommRouter
 ##
-## 通信路由 — SAY 可达性（听觉半径）与消息投递
+## 通信路由 — 对人操作须在当前视野内（感知半径 + LOS）
+## 听觉半径配置保留，暂不用于可达性。
 ##
 
 signal message_delivered(speaker_id: String, target_id: String, text: String, tick: int, recipient_ids: Array)
@@ -23,37 +24,37 @@ func all_players() -> Array:
 
 func players_in_perception(observer: Player) -> Array:
 	var out: Array = []
-	var r: int = observer.perception_radius()
-	var ot := observer.get_tile_position()
-	var world = observer.game_world()
 	for p in _players:
 		if p == observer:
 			continue
-		var pt: Vector2i = p.get_tile_position()
-		if _tile_distance(ot, pt) > r:
-			continue
-		if world != null and not world.has_line_of_sight(ot, pt):
+		if not _in_vision(observer, p.get_tile_position()):
 			continue
 		out.append(p)
 	return out
 
 
 func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: int) -> Dictionary:
+	if speaker.is_dead():
+		return {"ok": false, "error": "speaker is dead"}
 	var target := to.strip_edges()
 	if target.is_empty():
 		return {"ok": false, "error": "empty target"}
 	var recipients: Array = []
 	if target == "broadcast":
-		for p in _players:
-			if p != speaker and _can_hear(speaker, p):
+		for p in players_in_perception(speaker):
+			if not p.is_dead():
 				recipients.append(p)
 	else:
 		var found: Player = _find_player(target)
 		if found == null:
 			return {"ok": false, "error": "unknown agent: %s" % target}
-		if not _can_hear(speaker, found):
-			return {"ok": false, "error": "target out of audio range"}
+		if found.is_dead():
+			return {"ok": false, "error": "target is dead"}
+		if not _can_interact(speaker, found):
+			return {"ok": false, "error": "target not in sight"}
 		recipients.append(found)
+	if recipients.is_empty():
+		return {"ok": false, "error": "no one in sight"}
 	for p in recipients:
 		p.receive_say(str(speaker.agent_id), text, tone, tick)
 	var recipient_ids: Array = []
@@ -64,6 +65,8 @@ func deliver_say(speaker: Player, to: String, text: String, tone: String, tick: 
 
 
 func deliver_emote(speaker: Player, emoji: String, tick: int) -> Dictionary:
+	if speaker.is_dead():
+		return {"ok": false, "error": "speaker is dead"}
 	var mark := emoji.strip_edges()
 	if mark.is_empty():
 		return {"ok": false, "error": "empty emoji"}
@@ -84,8 +87,10 @@ func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int
 	var receiver: Player = _find_player(target)
 	if receiver == null:
 		return {"ok": false, "error": "unknown agent: %s" % target}
-	if not _can_hear(giver, receiver):
-		return {"ok": false, "error": "target out of audio range"}
+	if receiver.is_dead() or giver.is_dead():
+		return {"ok": false, "error": "target is dead" if receiver.is_dead() else "giver is dead"}
+	if not _can_interact(giver, receiver):
+		return {"ok": false, "error": "target not in sight"}
 	if not receiver.can_accept_item(item):
 		return {"ok": false, "error": "receiver food inventory full"}
 	giver.inventory.erase(item)
@@ -101,8 +106,10 @@ func deliver_share_map(sharer: Player, to_agent_id: String, tick: int) -> Dictio
 	var receiver: Player = _find_player(target_id)
 	if receiver == null:
 		return {"ok": false, "error": "unknown agent: %s" % target_id}
-	if not _can_hear(sharer, receiver):
-		return {"ok": false, "error": "target out of audio range"}
+	if receiver.is_dead() or sharer.is_dead():
+		return {"ok": false, "error": "target is dead" if receiver.is_dead() else "sharer is dead"}
+	if not _can_interact(sharer, receiver):
+		return {"ok": false, "error": "target not in sight"}
 	var from_id: String = str(sharer.agent_id)
 	var offer_key: String = "%s|%s" % [from_id, target_id]
 	var recip_key: String = "%s|%s" % [target_id, from_id]
@@ -127,8 +134,8 @@ func _merge_exploration(a: Player, b: Player) -> int:
 
 func players_in_audio(observer: Player) -> Array:
 	var out: Array = []
-	for p in _players:
-		if p != observer and _can_hear(observer, p):
+	for p in players_in_perception(observer):
+		if not p.is_dead():
 			out.append(p)
 	return out
 
@@ -141,7 +148,6 @@ func resolve_agent_id(alias: String) -> String:
 	var key := alias.strip_edges().to_lower()
 	if key.is_empty() or key == "broadcast":
 		return alias.strip_edges()
-	var exact: Array = []
 	var prefix: Array = []
 	for p in _players:
 		var id: String = str(p.agent_id)
@@ -162,9 +168,22 @@ func _find_player(agent_id: String) -> Player:
 	return null
 
 
-func _can_hear(speaker: Player, listener: Player) -> bool:
-	return _tile_distance(speaker.get_tile_position(), listener.get_tile_position()) <= Config.audio_radius()
+func _can_interact(speaker: Player, listener: Player) -> bool:
+	if speaker == null or listener == null or speaker == listener:
+		return false
+	if speaker.is_dead() or listener.is_dead():
+		return false
+	return _in_vision(speaker, listener.get_tile_position())
 
 
-func _tile_distance(a: Vector2i, b: Vector2i) -> int:
-	return abs(a.x - b.x) + abs(a.y - b.y)
+func _in_vision(observer: Player, tile: Vector2i) -> bool:
+	var r: int = observer.perception_radius()
+	var ot: Vector2i = observer.get_tile_position()
+	var dx: int = tile.x - ot.x
+	var dy: int = tile.y - ot.y
+	if dx * dx + dy * dy > r * r:
+		return false
+	var world = observer.game_world()
+	if world != null and not world.has_line_of_sight(ot, tile):
+		return false
+	return true

@@ -90,7 +90,11 @@ func cycle_selection() -> void:
 
 func set_agent_mode(enabled: bool) -> void:
 	for rec in records:
-		rec["decision"].set_enabled(enabled)
+		var player: PlayerScript = rec["player"]
+		var alive: bool = not player.is_dead()
+		rec["decision"].set_enabled(enabled and alive)
+		rec["planning"].enabled = alive
+		rec["reflection"].enabled = alive
 
 
 func reset_world(agent_mode: bool = false) -> void:
@@ -173,6 +177,8 @@ func apply_world(data: Dictionary) -> bool:
 		var plan: Variant = row.get("plan", {})
 		if typeof(plan) == TYPE_DICTIONARY:
 			rec["planning"].restore_save(plan)
+		if rec["player"].is_dead():
+			_silence_dead_agent(rec)
 	select_index(int(data.get("selected_index", 0)))
 	return true
 
@@ -221,6 +227,7 @@ func _spawn_agents() -> void:
 		player.bind_comm(comm)
 		player.bind_observability(_logger)
 		player.apply_agent_config(cfg)
+		player.died.connect(_on_player_died.bind(player))
 		_world.register_exploration(player.exploration)
 		if cfg.has("color") and typeof(cfg["color"]) == TYPE_ARRAY and cfg["color"].size() >= 3:
 			var c: Array = cfg["color"]
@@ -264,7 +271,7 @@ func _spawn_agents() -> void:
 		planning.setup(player, _clock, _llm, persona, memory, comm, relationships, goals)
 		planning.set_logger(_logger)
 		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships, goals)
-		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id))
+		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id), player)
 		reflection.set_logger(_logger)
 
 		records.append({
@@ -279,6 +286,51 @@ func _spawn_agents() -> void:
 		})
 	_refresh_selection_highlight()
 	roster_changed.emit()
+
+
+func _on_player_died(player: PlayerScript) -> void:
+	var rec: Dictionary = _find_record(str(player.agent_id))
+	if rec.is_empty():
+		return
+	_silence_dead_agent(rec)
+	var tick: int = _clock.current_tick() if _clock != null else -1
+	rec["memory"].append_event(
+		"injury",
+		"因连续缺觉或断食，健康降至 0，已死亡。",
+		tick,
+		0.9,
+		0.0,
+		1.0,
+	)
+	if comm != null:
+		for other in comm.players_in_perception(player):
+			var other_rec: Dictionary = _find_record(str(other.agent_id))
+			if other_rec.is_empty() or other.is_dead():
+				continue
+			other_rec["memory"].append_event(
+				"injury",
+				"看见 %s 倒下，已死亡。" % str(player.agent_id),
+				tick,
+				0.8,
+				0.7,
+				0.4,
+			)
+	if _logger != null:
+		_logger.log_event("agent_died", {
+			"tick": tick,
+			"agent_id": str(player.agent_id),
+			"nights_without_sleep": player.vitals.nights_without_sleep,
+			"days_without_food": player.vitals.days_without_food,
+			"health": player.vitals.health,
+		})
+
+
+func _silence_dead_agent(rec: Dictionary) -> void:
+	if rec.is_empty():
+		return
+	rec["decision"].set_enabled(false)
+	rec["planning"].enabled = false
+	rec["reflection"].enabled = false
 
 
 func _on_message_delivered(
@@ -360,7 +412,9 @@ func _refresh_selection_highlight() -> void:
 func tick_co_presence() -> void:
 	for rec in records:
 		var observer: PlayerScript = rec["player"]
+		if observer.is_dead():
+			continue
 		for p in comm.players_in_perception(observer):
-			if p == observer:
+			if p == observer or p.is_dead():
 				continue
 			rec["relationships"].on_co_presence(str(p.agent_id))

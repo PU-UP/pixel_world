@@ -21,6 +21,8 @@ const KIND_SHARE_MAP := "SHARE_MAP"
 const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
 
+const PICK_UP_ALL_FOOD := "all_food"
+
 const IMPLEMENTED_KINDS: Array[String] = [
 	KIND_MOVE_TO, KIND_SAY, KIND_EMOTE, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP,
 ]
@@ -38,7 +40,7 @@ const SCHEMAS: Dictionary = {
 	KIND_SAY: {
 		"required": ["to", "text"],
 		"types":    {"to": TYPE_STRING, "text": TYPE_STRING},
-		"desc":     "Say text to a specific agent or 'broadcast'",
+		"desc":     "Say text to a visible agent or 'broadcast' (all currently in sight)",
 	},
 	KIND_EMOTE: {
 		"required": ["emoji"],
@@ -53,7 +55,7 @@ const SCHEMAS: Dictionary = {
 	KIND_PICK_UP: {
 		"required": ["item"],
 		"types":    {"item": TYPE_STRING},
-		"desc":     "Pick up an item",
+		"desc":     "Pick up an item; food in sight is gathered in one action up to inventory cap",
 	},
 	KIND_DROP: {
 		"required": ["item"],
@@ -154,20 +156,19 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 		KIND_SAY:
 			var to_s: String = str(params.get("to", "")).strip_edges()
 			if to_s == "broadcast":
+				if ctx.get("audio_agent_ids", []).is_empty():
+					return {"ok": false, "error": "no one in sight", "hint": ""}
 				return {"ok": true, "error": "", "hint": ""}
 			if _looks_like_tick_id(to_s):
 				return {"ok": false, "error": "unknown agent: %s" % to_s, "hint": ""}
 			var audio_ids: Array = ctx.get("audio_agent_ids", [])
 			if _contains_id(audio_ids, to_s):
 				return {"ok": true, "error": "", "hint": ""}
-			var perception_ids: Array = ctx.get("perception_agent_ids", [])
-			if _contains_id(perception_ids, to_s):
-				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
 			var all_ids: Array = ctx.get("all_agent_ids", [])
 			if _contains_id(all_ids, to_s):
 				return {
 					"ok": false,
-					"error": "agent not in range: %s" % to_s,
+					"error": "agent not in sight: %s" % to_s,
 					"hint": "approach_agent",
 					"approach_id": to_s,
 				}
@@ -259,7 +260,8 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 				}
 			return {"ok": false, "error": "path empty", "hint": "unreachable"}
 		KIND_PICK_UP:
-			var item_id: String = str(params.get("item", "")).strip_edges()
+			var item_id: String = normalize_pickup_item(str(params.get("item", "")))
+			params["item"] = item_id
 			var pickup_ids: Array = ctx.get("pickup_item_ids", [])
 			if not _contains_id(pickup_ids, item_id):
 				return {"ok": false, "error": "item not in pickup range: %s" % item_id, "hint": ""}
@@ -281,14 +283,11 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 				if Config.item_is_food(item_g) and _contains_id(full_ids, to_give):
 					return {"ok": false, "error": "receiver food inventory full", "hint": ""}
 				return {"ok": true, "error": "", "hint": ""}
-			var perception_g: Array = ctx.get("perception_agent_ids", [])
-			if _contains_id(perception_g, to_give):
-				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
 			var all_g: Array = ctx.get("all_agent_ids", [])
 			if _contains_id(all_g, to_give):
 				return {
 					"ok": false,
-					"error": "agent not in range: %s" % to_give,
+					"error": "agent not in sight: %s" % to_give,
 					"hint": "approach_agent",
 					"approach_id": to_give,
 				}
@@ -300,14 +299,11 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var audio_s: Array = ctx.get("audio_agent_ids", [])
 			if _contains_id(audio_s, to_share):
 				return {"ok": true, "error": "", "hint": ""}
-			var perception_s: Array = ctx.get("perception_agent_ids", [])
-			if _contains_id(perception_s, to_share):
-				return {"ok": false, "error": "target out of audio range", "hint": "move_closer"}
 			var all_s: Array = ctx.get("all_agent_ids", [])
 			if _contains_id(all_s, to_share):
 				return {
 					"ok": false,
-					"error": "agent not in range: %s" % to_share,
+					"error": "agent not in sight: %s" % to_share,
 					"hint": "approach_agent",
 					"approach_id": to_share,
 				}
@@ -340,14 +336,24 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 	if world != null and world.state != null:
 		var obs_r: int = player.perception_radius()
 		var pick_r: int = Config.world_item_pickup_radius()
-		for item in world.state.items_near(agent_tile, obs_r + 1):
+		var food_in_sight: bool = false
+		for item in world.state.items_in_sight(agent_tile, obs_r, world):
 			var iid: String = str(item.get("item_id", ""))
-			if not iid.is_empty():
+			if iid.is_empty():
+				continue
+			if not _contains_id(ground_item_ids, iid):
 				ground_item_ids.append(iid)
-		for item in world.state.items_near(agent_tile, pick_r):
-			var pid: String = str(item.get("item_id", ""))
-			if not pid.is_empty():
-				pickup_item_ids.append(pid)
+			var item_tile: Vector2i = item.get("tile", agent_tile)
+			var adjacent: bool = _chebyshev(agent_tile, item_tile) <= pick_r
+			if Config.item_is_food(iid) and Config.world_food_gather_in_sight():
+				food_in_sight = true
+				if not _contains_id(pickup_item_ids, iid):
+					pickup_item_ids.append(iid)
+			elif adjacent:
+				if not _contains_id(pickup_item_ids, iid):
+					pickup_item_ids.append(iid)
+		if food_in_sight and not _contains_id(pickup_item_ids, PICK_UP_ALL_FOOD):
+			pickup_item_ids.insert(0, PICK_UP_ALL_FOOD)
 	var occupied_tiles: Array = []
 	var food_full_agent_ids: Array = []
 	if comm != null:
@@ -442,6 +448,114 @@ static func nearby_walkable_tiles(world, center: Vector2i, radius: int = 2) -> P
 	return out
 
 
+static func frontier_tiles(world, exploration, origin: Vector2i, limit: int = 8) -> Array:
+	var out: Array = []
+	if world == null or exploration == null or limit <= 0:
+		return out
+	var seen: Dictionary = {}
+	var cands: Array = []
+	for tile in exploration.explored_tiles():
+		if not world.is_walkable_tile(tile):
+			continue
+		for d in AStarPathfinder.DIRS:
+			var n: Vector2i = tile + d
+			var key: String = _tile_key(n)
+			if seen.has(key):
+				continue
+			if exploration.get_state(n.x, n.y) != 0:
+				continue
+			if not world.is_walkable_tile(n):
+				continue
+			seen[key] = true
+			var dx: int = n.x - origin.x
+			var dy: int = n.y - origin.y
+			cands.append({
+				"tile": n,
+				"dist": abs(dx) + abs(dy),
+				"oct": _octant(dx, dy),
+			})
+	if cands.is_empty():
+		return out
+	cands.sort_custom(_sort_frontier_by_dist)
+	var picked: Dictionary = {}
+	var by_oct: Dictionary = {}
+	var chosen: Vector2i
+	var chosen_key: String
+	var chosen_path: Array
+	for c in cands:
+		var oct: int = int(c["oct"])
+		if by_oct.has(oct):
+			continue
+		chosen = c["tile"]
+		chosen_path = AStarPathfinder.find_path(world, origin, chosen)
+		if chosen_path.is_empty():
+			continue
+		by_oct[oct] = true
+		picked[_tile_key(chosen)] = true
+		out.append(chosen)
+		if out.size() >= limit:
+			return out
+	for c in cands:
+		if out.size() >= limit:
+			break
+		chosen = c["tile"]
+		chosen_key = _tile_key(chosen)
+		if picked.has(chosen_key):
+			continue
+		chosen_path = AStarPathfinder.find_path(world, origin, chosen)
+		if chosen_path.is_empty():
+			continue
+		picked[chosen_key] = true
+		out.append(chosen)
+	return out
+
+
+static func frontier_walkable_tiles(world, exploration, origin: Vector2i, limit: int = 8) -> PackedStringArray:
+	var labels: PackedStringArray = PackedStringArray()
+	for t in frontier_tiles(world, exploration, origin, limit):
+		labels.append("(%d,%d)" % [t.x, t.y])
+	return labels
+
+
+static func compass_name(from: Vector2i, to: Vector2i) -> String:
+	var dx: int = to.x - from.x
+	var dy: int = to.y - from.y
+	var h := ""
+	var v := ""
+	if dx > 0:
+		h = "东"
+	elif dx < 0:
+		h = "西"
+	if dy > 0:
+		v = "南"
+	elif dy < 0:
+		v = "北"
+	if h.is_empty() and v.is_empty():
+		return "附近"
+	return v + h
+
+
+static func normalize_pickup_item(raw: String) -> String:
+	var s: String = raw.strip_edges()
+	var low: String = s.to_lower()
+	if low in ["all", "all_food", "food", "nearby_food", "全部", "食物", "野果"]:
+		return PICK_UP_ALL_FOOD
+	return s
+
+
+static func _octant(dx: int, dy: int) -> int:
+	if dx == 0 and dy == 0:
+		return 0
+	var ang: float = atan2(float(dy), float(dx))
+	var slice: float = (ang + PI + PI / 8.0) / (PI / 4.0)
+	var oct: int = posmod(int(floor(slice)), 8)
+	return oct
+
+
+static func _sort_frontier_by_dist(a, b) -> bool:
+	return int(a["dist"]) < int(b["dist"])
+
+
 static func _tile_key(tile: Vector2i) -> String:
 	return "%d,%d" % [tile.x, tile.y]
 
@@ -450,7 +564,7 @@ static func _chebyshev(a: Vector2i, b: Vector2i) -> int:
 	return maxi(abs(a.x - b.x), abs(a.y - b.y))
 
 
-static func _contains_id(ids: Array, id: String) -> bool:
+static func _contains_id(ids: Variant, id: String) -> bool:
 	var key := id.strip_edges()
 	if key.is_empty():
 		return false

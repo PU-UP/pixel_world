@@ -6,6 +6,7 @@ llm:
 
 agent:
   perception_radius: 6
+  # 对人操作暂走视野+LOS；听觉半径保留，暂不用于可达性
   audio_radius: 10
   observation_refresh_ticks: 2
   move_speed_px: 80.0
@@ -55,8 +56,12 @@ vitals:
   energy_floor: 40
   satiety_floor: 35
   hungry_sleep_below: 25
-  low_energy_speed_below: 18
-  low_energy_speed_scale: 0.72
+  hungry_energy_below: 25
+  starving_energy_below: 8
+  hungry_energy_scale: 1.18
+  starving_energy_scale: 1.4
+  low_energy_speed_below: 14
+  low_energy_speed_scale: 0.82
   min_night_sleep_ticks: 36
   missed_night_energy_penalty: 10
   extra_night_energy_penalty: 4
@@ -65,20 +70,36 @@ vitals:
   extra_day_satiety_penalty: 5
   ate_day_satiety_recover: 7
   missed_day_energy_penalty: 4
-  food_inventory_max: 3
+  food_inventory_max: 5
+  starting_food: [berry_bush, berry_bush]
+  health:
+    max: 100
+    miss_sleep: 5
+    extra_sleep: 4
+    miss_food: 6
+    extra_food: 4
+    both_extra: 3
+    recover_both: 7
+    recover_one: 2
+    frail_below: 35
+    frail_drain_scale: 1.25
+    frail_sleep_scale: 0.75
+    slow_below: 20
+    slow_scale: 0.8
   bar:
     energy: true
     satiety: true
+    health: true
   drain:
-    energy_idle: 0.28
-    energy_walk: 0.12
-    energy_night_awake: 0.45
+    energy_idle: 0.18
+    energy_walk: 0.06
+    energy_night_awake: 0.32
     energy_sleep_restore: 1.15
     energy_day_sleep_scale: 0.06
     energy_hungry_sleep_scale: 0.55
-    satiety_idle: 0.32
-    satiety_walk: 0.06
-    satiety_sleep: 0.18
+    satiety_idle: 0.22
+    satiety_walk: 0.04
+    satiety_sleep: 0.14
 
 decision:
   skip_while_walking: false
@@ -91,6 +112,10 @@ exploration:
   share_consensus_ticks: 60
   stale_overlay: true
   stale_tint: [0.85, 0.12, 0.62, 0.55]
+  frontier_prompt_max: 8
+  local_move_radius: 1
+  dwell_hint_ticks: 24
+  dwell_radius: 2
 
 memory:
   importance_threshold_for_permanent: 0.7
@@ -129,6 +154,10 @@ memory:
 planning:
   trigger_ticks: 80
   max_steps: 7
+
+goals:
+  survive: 活下去
+  survive_detail: 死亡不可逆。健康在每个黎明结算：连续缺觉或断食会下降，降至 0 即死亡。没有自杀原语。
 
 relationships:
   greet_familiarity: 0.35

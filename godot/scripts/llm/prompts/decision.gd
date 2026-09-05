@@ -24,23 +24,28 @@ static func build_messages(
 	walkable_near_lines: PackedStringArray = [],
 	blocked_move_lines: PackedStringArray = [],
 	goal_lines: PackedStringArray = [],
+	frontier_lines: PackedStringArray = [],
 ) -> Array:
 	var system := """You are an autonomous agent in a 2D pixel island world with other agents.
 Each game tick you must choose exactly ONE action using the provided tool.
 Only tools listed in the request are available — pick one of them.
 MOVE_TO uses tile coordinates (integers). You cannot walk on water, trees, or mountains.
 Do not MOVE_TO another agent's exact tile — stand on an adjacent walkable tile to talk.
-If target is visible but not in audio range, use MOVE_TO to approach before SAY/GIVE.
-If someone spoke to you (=== Pending reply ===), respond with SAY using NEW words.
+SAY, GIVE, SHARE_MAP, and using items on others require that agent to be in your current field of view (perception radius + line of sight). If nobody is in sight, those tools are not available — do not shout at empty air.
+If someone spoke to you and they are still in sight (=== Pending reply ===), respond with SAY using NEW words.
 WAIT to stand still for a few ticks when you have nothing urgent to do.
 EMOTE shows a short emoji visible to agents in sight (0 ticks). Use Unicode emoji or a short token.
-SLEEP is allowed any time. Dusk/night sleep restores energy well; dawn/day sleep restores almost none. Prefer SLEEP at dusk until next dawn. Vision shrinks at night.
+SLEEP is allowed any time. Dusk/night sleep restores energy well; dawn/day sleep restores almost none. Vision shrinks at night.
 Eating food restores satiety and a little energy — food is not a substitute for sleep.
 Hungry sleep restores less energy. Skipping nights shrinks your energy ceiling; skipping food shrinks your satiety ceiling. Ceilings recover only after consecutive good nights / days of eating.
-USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby agent to feed them.
+Health is settled at dawn from consecutive missed night sleep and days without food. Health 0 is irreversible death. There is no suicide primitive. Low health makes you frailer (faster energy drain, worse sleep restore, slower walk) but does not force any action.
+You have an immutable goal to stay alive.
+USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby living agent to feed them.
 You may carry at most a few food items; drop or eat before picking more.
+PICK_UP of food gathers every matching food item currently in sight, until the food bag is full. Use item all_food to gather every visible food type at once.
+MOVE_TO may target any walkable tile, not only listed ones. Frontier tiles are walkable cells at the edge of land you have already explored.
 SAY.text MUST be Simplified Chinese (简体中文), concise (under 120 Chinese characters).
-Use SHARE_MAP when you agree to exchange explored map areas with an agent in audio range.
+Use SHARE_MAP when you agree to exchange explored map areas with an agent in sight.
 Respond ONLY via tool/function call — no free-form answer."""
 	var user_parts: PackedStringArray = []
 	user_parts.append("=== Persona ===\n%s" % persona_desc)
@@ -48,20 +53,24 @@ Respond ONLY via tool/function call — no free-form answer."""
 	user_parts.append("=== Observation (terrain + nearby) ===\n%s" % observation)
 	if plan_lines.size() > 0:
 		user_parts.append("=== Current plan (remaining steps) ===\n%s" % "\n".join(plan_lines))
+	if frontier_lines.size() > 0:
+		user_parts.append(
+			"=== Unexplored frontier (MOVE_TO) ===\n%s" % ", ".join(frontier_lines)
+		)
 	if walkable_near_lines.size() > 0:
 		user_parts.append(
-			"=== Walkable tiles near you (MOVE_TO targets) ===\n%s" % ", ".join(walkable_near_lines)
+			"=== Adjacent walkable tiles ===\n%s" % ", ".join(walkable_near_lines)
 		)
 	if blocked_move_lines.size() > 0:
 		user_parts.append(
 			"=== Failed MOVE_TO tiles (do NOT retry) ===\n%s" % "\n".join(blocked_move_lines)
 		)
-	if perception_agent_ids.size() > 0:
-		user_parts.append("=== Perception agent ids ===\n%s" % ", ".join(perception_agent_ids))
 	if audio_agent_ids.size() > 0:
-		user_parts.append("=== Audio range agent ids (SAY.to / GIVE.to) ===\n%s" % ", ".join(audio_agent_ids))
+		user_parts.append("=== Agents in sight (SAY/GIVE/SHARE_MAP) ===\n%s" % ", ".join(audio_agent_ids))
 	else:
-		user_parts.append("=== Audio range agent ids ===\n(none — use broadcast or MOVE_TO closer)")
+		user_parts.append("=== Agents in sight ===\n(none living — SAY/GIVE/SHARE_MAP unavailable)")
+	if perception_agent_ids.size() > 0 and audio_agent_ids.size() == 0:
+		user_parts.append("=== Visible corpses ===\n%s" % ", ".join(perception_agent_ids))
 	if observe_agent_ids.size() > 0:
 		user_parts.append("=== OBSERVE legal agent ids ===\n%s" % ", ".join(observe_agent_ids))
 	if ground_item_ids.size() > 0:
@@ -106,19 +115,20 @@ static func tool_definitions_for_context(
 		},
 		["x", "y"],
 	))
-	var say_to: Array = ["broadcast"]
-	for id in audio_agent_ids:
-		say_to.append(id)
-	tools.append(_fn(
-		AgentActions.KIND_SAY,
-		"SAY to broadcast or an agent within audio range",
-		{
-			"to": {"type": "string", "enum": say_to},
-			"text": {"type": "string", "description": "简体中文对话内容"},
-			"tone": {"type": "string", "description": "语气，如：友好、平静"},
-		},
-		["to", "text"],
-	))
+	if audio_agent_ids.size() > 0:
+		var say_to: Array = ["broadcast"]
+		for id in audio_agent_ids:
+			say_to.append(id)
+		tools.append(_fn(
+			AgentActions.KIND_SAY,
+			"SAY to a living agent currently in sight, or broadcast to all of them",
+			{
+				"to": {"type": "string", "enum": say_to},
+				"text": {"type": "string", "description": "简体中文对话内容"},
+				"tone": {"type": "string", "description": "语气，如：友好、平静"},
+			},
+			["to", "text"],
+		))
 	tools.append(_fn(
 		AgentActions.KIND_EMOTE,
 		"Show a short emoji visible to agents in sight (0 ticks)",
@@ -140,7 +150,7 @@ static func tool_definitions_for_context(
 	if pickup_item_ids.size() > 0:
 		tools.append(_fn(
 			AgentActions.KIND_PICK_UP,
-			"Pick up a ground item within 1 tile (food inventory is capped)",
+			"Pick up. Food in sight is gathered in one action up to the food bag cap; all_food takes every visible food type.",
 			{
 				"item": {"type": "string", "enum": _array_from_packed(pickup_item_ids)},
 			},
@@ -171,7 +181,7 @@ static func tool_definitions_for_context(
 		if audio_agent_ids.size() > 0:
 			tools.append(_fn(
 				AgentActions.KIND_GIVE,
-				"Give inventory item to agent within audio range",
+				"Give inventory item to a living agent currently in sight",
 				{
 					"item": {"type": "string", "enum": inv_enum},
 					"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
@@ -181,7 +191,7 @@ static func tool_definitions_for_context(
 	if audio_agent_ids.size() > 0:
 		tools.append(_fn(
 			AgentActions.KIND_SHARE_MAP,
-			"Offer to share your explored map with an agent (mutual SHARE_MAP merges gray areas)",
+			"Offer to share your explored map with an agent in sight (mutual SHARE_MAP merges gray areas)",
 			{
 				"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
 			},

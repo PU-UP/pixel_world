@@ -4,21 +4,68 @@ world:
   map_height: 96
   seed: 1337
   item_pickup_radius: 1
+  food_gather_in_sight: true
   food_spawn:
-    interval_ticks: 72
-    max_ground: 12
-    per_wave: 2
-    attempts: 40
+    interval_ticks: 48
+    max_ground: 36
+    per_wave: 5
+    attempts: 60
+    hotspot_chance: 0.7
     pool:
       - item: berry_bush
+        weight: 4
+        terrains: [grass]
+        prefer: orchard
+      - item: wild_nut
         weight: 3
         terrains: [grass]
-      - item: wild_nut
-        weight: 2
-        terrains: [grass]
+        prefer: orchard
       - item: beach_grape
         weight: 2
         terrains: [sand]
+  generation:
+    coast_noise: 0.11
+    coast_wobble: 0.09
+    inner_grass: 0.58
+    sand_start: 0.76
+    sand_end: 0.86
+    mountain_core: 0.18
+    mountain_core_chance: 0.38
+    tree_scatter: 0.035
+    spawn_clear_radius: 5
+    bays:
+      - center: [76, 74]
+        radius: 11
+    ridges:
+      - center: [48, 26]
+        radius: 9
+        chance: 0.5
+      - center: [61, 34]
+        radius: 6
+        chance: 0.42
+    groves:
+      - center: [24, 48]
+        radius: 10
+        tree_chance: 0.52
+      - center: [73, 46]
+        radius: 8
+        tree_chance: 0.48
+      - center: [50, 66]
+        radius: 7
+        tree_chance: 0.42
+    orchards:
+      - center: [32, 56]
+        radius: 5
+        ring: 2
+        food: [berry_bush, berry_bush, wild_nut, berry_bush, berry_bush]
+      - center: [64, 60]
+        radius: 5
+        ring: 2
+        food: [berry_bush, wild_nut, wild_nut, berry_bush]
+      - center: [44, 38]
+        radius: 4
+        ring: 2
+        food: [wild_nut, berry_bush, berry_bush, wild_nut]
 
 items:
   driftwood:
@@ -77,13 +124,19 @@ ground_items:
   - item: seashell
     tile: [52, 73]
   - item: berry_bush
-    tile: [33, 57]
+    tile: [32, 56]
   - item: berry_bush
-    tile: [60, 54]
+    tile: [33, 55]
+  - item: berry_bush
+    tile: [64, 60]
+  - item: wild_nut
+    tile: [44, 38]
   - item: wild_nut
     tile: [30, 50]
   - item: beach_grape
     tile: [50, 74]
+  - item: beach_grape
+    tile: [44, 70]
   - item: flint
     tile: [48, 42]
   - item: rope
@@ -108,8 +161,20 @@ regions:
     radius: 12
   - id: west_grove
     name: "西林"
-    center: [27, 51]
+    center: [24, 48]
     radius: 12
+  - id: west_orchard
+    name: "西林果园"
+    center: [32, 56]
+    radius: 8
+  - id: south_orchard
+    name: "南坡果园"
+    center: [64, 60]
+    radius: 8
+  - id: north_orchard
+    name: "北坡果园"
+    center: [44, 38]
+    radius: 7
 
 events:
   - id: seabirds

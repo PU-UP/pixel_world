@@ -14,6 +14,8 @@ const AgentActions = preload("res://scripts/agent/actions.gd")
 const ExplorationMap = preload("res://scripts/world/exploration_map.gd")
 const AgentVitals = preload("res://scripts/agent/vitals.gd")
 
+signal died
+
 const TILE_SIZE: int = GameWorld.TILE_SIZE
 
 @export var move_speed_px: float = 80.0
@@ -45,6 +47,10 @@ var _pending_reply_text: String = ""
 var _pending_reply_tick: int = -1
 var _last_say_text: String = ""
 var _last_say_tick: int = -1
+var _dwell_anchor: Vector2i = Vector2i.ZERO
+var _dwell_ticks: int = 0
+var _frontier_cache_tick: int = -999
+var _frontier_cache: Array = []
 var inventory: Array = []
 var vitals: AgentVitals = AgentVitals.new()
 var exploration: ExplorationMap = ExplorationMap.new()
@@ -64,11 +70,12 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"emote": "表情",
 	"received": "收到",
 	"heard": "听到",
+	"die": "死亡",
 }
 var _selected: bool = false
 
 # ---- P2 状态机 ----
-enum State { IDLE, WALKING, WAITING, SLEEPING }
+enum State { IDLE, WALKING, WAITING, SLEEPING, DEAD }
 var _state: int = State.IDLE
 var _action_queue: Array = []           # 待执行的 actions
 var _current_action: Dictionary = {}    # 正在执行的
@@ -88,7 +95,12 @@ var _pending_spawn: Variant = null
 # 生命周期
 # ------------------------------------------------------------------
 func is_busy() -> bool:
-	return _state == State.WALKING or _state == State.WAITING or _state == State.SLEEPING
+	return (
+		_state == State.WALKING
+		or _state == State.WAITING
+		or _state == State.SLEEPING
+		or _state == State.DEAD
+	)
 
 
 func is_walking() -> bool:
@@ -115,6 +127,15 @@ func apply_agent_config(cfg: Dictionary) -> void:
 		display_name = str(cfg["display_name"])
 	if cfg.has("spawn_tile"):
 		_pending_spawn = cfg["spawn_tile"]
+	seed_starting_inventory()
+
+
+func seed_starting_inventory() -> void:
+	if not inventory.is_empty():
+		return
+	for item_id in Config.vitals_starting_food():
+		if Config.can_carry_item(inventory, item_id):
+			inventory.append(item_id)
 
 
 func _relocate_spawn() -> void:
@@ -185,6 +206,8 @@ func capture_save() -> Dictionary:
 	}
 	if _state == State.SLEEPING and _sleep_until_tick > 0:
 		data["sleep_until_tick"] = _sleep_until_tick
+	if is_dead():
+		data["dead"] = true
 	return data
 
 
@@ -213,10 +236,17 @@ func apply_save(row: Dictionary, restore_exploration: bool = true) -> void:
 	else:
 		vitals.reset()
 	_last_observation_tick = -1
+	_dwell_ticks = 0
+	_dwell_anchor = get_tile_position()
+	_frontier_cache_tick = -999
+	_frontier_cache = []
 	if _world != null:
 		var now: int = _clock.current_tick() if _clock != null else 0
 		exploration.update_observer(get_tile_position(), perception_radius(), _world, now)
-	_restore_sleep(int(row.get("sleep_until_tick", 0)))
+	if bool(row.get("dead", false)) or vitals.is_deceased():
+		_become_corpse(false)
+	else:
+		_restore_sleep(int(row.get("sleep_until_tick", 0)))
 
 
 func bind_world(world) -> void:
@@ -268,7 +298,13 @@ func is_sleeping() -> bool:
 	return _state == State.SLEEPING
 
 
+func is_dead() -> bool:
+	return _state == State.DEAD
+
+
 func busy_state() -> String:
+	if _state == State.DEAD:
+		return "dead"
 	if _state == State.SLEEPING:
 		var left: int = maxi(0, _sleep_until_tick - current_tick())
 		return "sleeping余%d" % left
@@ -289,6 +325,10 @@ func perception_radius() -> int:
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
 # ------------------------------------------------------------------
 func enqueue_action(action: Dictionary) -> void:
+	if is_dead():
+		_log_action(_clock.current_tick() if _clock else -1, "reject", "dead")
+		_log_obs_action(str(action.get("kind", "?")), action.get("params", {}), false, "dead")
+		return
 	var v: Dictionary = AgentActions.validate(action)
 	if not v["ok"]:
 		_log_action(_clock.current_tick() if _clock else -1, "reject", "invalid: %s" % v["error"])
@@ -362,6 +402,9 @@ func _draw() -> void:
 	if _selected:
 		draw_arc(Vector2.ZERO, TILE_SIZE * 0.55, 0.0, TAU, 24, Color(1.0, 0.95, 0.3, 0.85), 2.0)
 	_draw_vital_bars()
+	if _state == State.DEAD:
+		draw_line(Vector2(-5, -5), Vector2(5, 5), Color(0.62, 0.14, 0.14, 0.95), 1.6)
+		draw_line(Vector2(-5, 5), Vector2(5, -5), Color(0.62, 0.14, 0.14, 0.95), 1.6)
 	if _state == State.SLEEPING:
 		draw_circle(Vector2(10, -8), 2.0, Color(0.85, 0.9, 1.0, 0.95))
 		draw_circle(Vector2(13, -12), 2.4, Color(0.85, 0.9, 1.0, 0.95))
@@ -386,6 +429,10 @@ func _draw() -> void:
 # 状态机: IDLE -> WALKING
 # ------------------------------------------------------------------
 func _pump_next_action() -> void:
+	if is_dead():
+		_action_queue.clear()
+		_current_action = {}
+		return
 	if _action_queue.is_empty():
 		_state = State.IDLE
 		_current_action = {}
@@ -514,7 +561,18 @@ func _draw_emote_bubble() -> void:
 func _draw_vital_bars() -> void:
 	if not vitals.enabled():
 		return
-	var origin := Vector2(-7.0, -11.0)
+	# 精灵居中 16×16，顶边在 y=-8；三条都画在头顶上方，避免被 Sprite2D 盖住
+	var origin := Vector2(-7.0, -20.0)
+	if Config.vitals_bar_health():
+		_draw_meter_bar(
+			origin,
+			vitals.health_ratio(),
+			1.0,
+			vitals.health_ratio(),
+			2.5,
+			"health",
+		)
+		origin.y += 4.0
 	if Config.vitals_bar_energy():
 		_draw_meter_bar(
 			origin,
@@ -531,7 +589,7 @@ func _draw_vital_bars() -> void:
 			clampf(vitals.satiety_ceiling / maxf(1.0, float(Config.vitals_cfg().get("base_max", 100))), 0.0, 1.0),
 			vitals.satiety_ratio(),
 			1.5,
-			true,
+			"satiety",
 		)
 
 
@@ -541,7 +599,7 @@ func _draw_meter_bar(
 	ceiling_of_base: float,
 	feel_ratio: float,
 	height: float,
-	satiety: bool = false,
+	kind: String = "energy",
 ) -> void:
 	var width: float = 14.0
 	var border := Rect2(origin, Vector2(width, height))
@@ -553,10 +611,17 @@ func _draw_meter_bar(
 	var ceil_w: float = inner.size.x * clampf(ceiling_of_base, 0.0, 1.0)
 	var fill_w: float = inner.size.x * clampf(fill_of_base, 0.0, 1.0)
 	var fill_color: Color
-	if satiety:
+	if kind == "satiety":
 		fill_color = Color(0.92, 0.55, 0.18).lerp(Color(0.95, 0.78, 0.28), clampf(feel_ratio, 0.0, 1.0))
 		if feel_ratio < 0.35:
 			fill_color = Color(0.82, 0.28, 0.12)
+	elif kind == "health":
+		if feel_ratio <= 0.0:
+			fill_color = Color(0.22, 0.08, 0.08)
+		elif feel_ratio < 0.35:
+			fill_color = Color(0.78, 0.16, 0.18)
+		else:
+			fill_color = Color(0.72, 0.22, 0.28).lerp(Color(0.86, 0.32, 0.38), clampf(feel_ratio, 0.0, 1.0))
 	else:
 		if feel_ratio < 0.28:
 			fill_color = Color(0.86, 0.2, 0.16)
@@ -579,7 +644,7 @@ func _draw_meter_bar(
 
 func _execute_pick_up(action: Dictionary) -> void:
 	var p: Dictionary = action["params"]
-	var item_id: String = str(p.get("item", ""))
+	var item_id: String = AgentActions.normalize_pickup_item(str(p.get("item", "")))
 	var tick: int = _clock.current_tick() if _clock else -1
 	if _world == null or _world.state == null:
 		_log_action(tick, "pickup", "FAILED no world state")
@@ -588,15 +653,33 @@ func _execute_pick_up(action: Dictionary) -> void:
 		_log_action(tick, "pickup", "FAILED food inventory full")
 		_log_obs_action(AgentActions.KIND_PICK_UP, p, false, "food inventory full")
 	else:
-		var res: Dictionary = _world.state.try_pick_up(get_tile_position(), item_id)
-		if res.get("ok", false):
-			inventory.append(str(res.get("item_id", item_id)))
-			_log_action(tick, "pickup", "got %s" % res.get("item_id", item_id))
-			_log_obs_action(AgentActions.KIND_PICK_UP, p, true, "got %s" % res.get("item_id", item_id))
+		var batch_food: bool = Config.is_food_gather_token(item_id) or Config.item_is_food(item_id)
+		var res: Dictionary = {}
+		if batch_food:
+			var radius: int = perception_radius() if Config.world_food_gather_in_sight() else Config.world_item_pickup_radius()
+			var room: int = Config.vitals_food_inventory_max() - food_count()
+			res = _world.state.try_gather_food(get_tile_position(), item_id, radius, _world, room)
+			if res.get("ok", false):
+				var got: Array = res.get("items", [])
+				for iid in got:
+					inventory.append(str(iid))
+				var summary: String = ",".join(got)
+				_log_action(tick, "pickup", "got %s" % summary)
+				_log_obs_action(AgentActions.KIND_PICK_UP, p, true, "got %s" % summary)
+			else:
+				var err_g: String = str(res.get("error", "?"))
+				_log_action(tick, "pickup", "FAILED %s" % err_g)
+				_log_obs_action(AgentActions.KIND_PICK_UP, p, false, err_g, err_g)
 		else:
-			var err: String = str(res.get("error", "?"))
-			_log_action(tick, "pickup", "FAILED %s" % err)
-			_log_obs_action(AgentActions.KIND_PICK_UP, p, false, err, err)
+			res = _world.state.try_pick_up(get_tile_position(), item_id)
+			if res.get("ok", false):
+				inventory.append(str(res.get("item_id", item_id)))
+				_log_action(tick, "pickup", "got %s" % res.get("item_id", item_id))
+				_log_obs_action(AgentActions.KIND_PICK_UP, p, true, "got %s" % res.get("item_id", item_id))
+			else:
+				var err: String = str(res.get("error", "?"))
+				_log_action(tick, "pickup", "FAILED %s" % err)
+				_log_obs_action(AgentActions.KIND_PICK_UP, p, false, err, err)
 	_pump_next_action()
 
 
@@ -674,6 +757,11 @@ func _execute_use(action: Dictionary) -> void:
 		var def: Dictionary = defs.get(item_id, {})
 		var text: String = str(def.get("use_text", "used %s" % item_id))
 		var fed: Player = _resolve_feed_target(on_target)
+		if Config.item_is_food(item_id) and fed != null and fed.is_dead():
+			_log_action(tick, "use", "FAILED target dead: %s" % on_target)
+			_log_obs_action(AgentActions.KIND_USE, p, false, "target dead", on_target)
+			_pump_next_action()
+			return
 		if Config.item_is_food(item_id) and fed != null and fed.vitals.enabled():
 			var eaten: Dictionary = fed.vitals.eat(
 				float(def.get("satiety_restore", 0)),
@@ -786,7 +874,39 @@ func _restore_sleep(until_tick: int) -> void:
 	_enter_sleep(until_tick)
 
 
+func _become_corpse(announce: bool) -> void:
+	if _state == State.DEAD:
+		return
+	_action_queue.clear()
+	_current_path.clear()
+	_path_idx = 0
+	_wait_remaining = 0
+	_sleep_until_tick = 0
+	_walk_stuck_time = 0.0
+	_current_action = {}
+	_emote_text = ""
+	_emote_left = 0.0
+	_clear_pending_reply()
+	_state = State.DEAD
+	vitals.health = 0.0
+	modulate = Color(0.34, 0.32, 0.32)
+	queue_redraw()
+	if not announce:
+		return
+	var tick: int = _clock.current_tick() if _clock else -1
+	var text := "健康降至 0（连续未睡%d夜 连续未进食%d天）" % [
+		vitals.nights_without_sleep,
+		vitals.days_without_food,
+	]
+	_log_action(tick, "die", text)
+	_log_obs_action("DIE", {}, true, text)
+	died.emit()
+
+
 func _on_clock_tick(_tick_index: int) -> void:
+	if is_dead():
+		return
+	_tick_dwell()
 	if _clock != null:
 		var p: String = _clock.phase()
 		if p != _last_phase:
@@ -805,6 +925,9 @@ func _on_clock_tick(_tick_index: int) -> void:
 	)
 	if vitals.enabled():
 		queue_redraw()
+	if vitals.is_deceased():
+		_become_corpse(true)
+		return
 	if _state == State.WAITING:
 		_wait_remaining -= 1
 		if _wait_remaining > 0:
@@ -820,7 +943,33 @@ func _on_clock_tick(_tick_index: int) -> void:
 	_finish_idle()
 
 
+func _tick_dwell() -> void:
+	var tile: Vector2i = get_tile_position()
+	var radius: int = Config.exploration_dwell_radius()
+	if abs(tile.x - _dwell_anchor.x) <= radius and abs(tile.y - _dwell_anchor.y) <= radius:
+		_dwell_ticks += 1
+	else:
+		_dwell_anchor = tile
+		_dwell_ticks = 0
+
+
+func cached_frontier_tiles() -> Array:
+	var t: int = current_tick()
+	if t == _frontier_cache_tick:
+		return _frontier_cache
+	_frontier_cache_tick = t
+	_frontier_cache = AgentActions.frontier_tiles(
+		_world,
+		exploration,
+		get_tile_position(),
+		Config.exploration_frontier_prompt_max(),
+	)
+	return _frontier_cache
+
+
 func _finish_idle() -> void:
+	if is_dead():
+		return
 	_state = State.IDLE
 	modulate = Color.WHITE
 	_current_action = {}
@@ -857,6 +1006,8 @@ func _resolve_feed_target(on_target: String) -> Player:
 
 
 func receive_say(from_id: String, text: String, _tone: String, tick: int) -> void:
+	if is_dead():
+		return
 	_heard_messages.append({"from": from_id, "text": text, "tick": tick})
 	if _heard_messages.size() > 6:
 		_heard_messages.pop_front()
@@ -867,6 +1018,8 @@ func receive_say(from_id: String, text: String, _tone: String, tick: int) -> voi
 
 
 func receive_emote(from_id: String, emoji: String, tick: int) -> void:
+	if is_dead():
+		return
 	_seen_emotes.append({"from": from_id, "emoji": emoji, "tick": tick})
 	if _seen_emotes.size() > 6:
 		_seen_emotes.pop_front()
@@ -885,6 +1038,8 @@ func receive_item(from_id: String, item_id: String, tick: int) -> void:
 
 
 func can_accept_item(item_id: String) -> bool:
+	if is_dead():
+		return false
 	return Config.can_carry_item(inventory, item_id)
 
 
@@ -970,6 +1125,8 @@ func _refresh_observation_if_needed() -> void:
 	if _world != null and _world.state != null:
 		region_name = _world.state.region_name_at(Vector2i(cx, cy))
 	var r: int = perception_radius()
+	exploration.update_observer(Vector2i(cx, cy), r, _world, t)
+	_frontier_cache_tick = -999
 	var counts: Dictionary = {}
 	var origin := Vector2i(cx, cy)
 	for dy in range(-r, r + 1):
@@ -991,13 +1148,17 @@ func _refresh_observation_if_needed() -> void:
 		for p in _comm.players_in_perception(self):
 			var pt: Vector2i = p.get_tile_position()
 			var extra := ""
-			if p.is_sleeping():
+			if p.is_dead():
+				extra = " 已死亡"
+			elif p.is_sleeping():
 				extra = " 入睡"
-			if p.vitals.enabled():
+			if not p.is_dead() and p.vitals.enabled():
 				if p.vitals.is_tired():
 					extra += " 疲惫"
 				if p.vitals.is_hungry():
 					extra += " 饥饿"
+				if p.vitals.is_frail():
+					extra += " 虚弱"
 			var face: String = p.current_emote()
 			if not face.is_empty():
 				extra += " %s" % face
@@ -1008,10 +1169,8 @@ func _refresh_observation_if_needed() -> void:
 		_observation_text = "区域=%s | %s" % [region_name, terrain_text]
 	var item_parts: PackedStringArray = []
 	if _world != null and _world.state != null:
-		for item in _world.state.items_near(Vector2i(cx, cy), r):
+		for item in _world.state.items_in_sight(Vector2i(cx, cy), r, _world):
 			var item_tile: Vector2i = item.get("tile", Vector2i.ZERO)
-			if not _world.has_line_of_sight(Vector2i(cx, cy), item_tile):
-				continue
 			item_parts.append("%s@(%d,%d)" % [str(item.get("item_id", "?")), item_tile.x, item_tile.y])
 	if item_parts.size() > 0:
 		_observation_text += " | 物品: " + ", ".join(item_parts)
@@ -1019,6 +1178,19 @@ func _refresh_observation_if_needed() -> void:
 		var event_lines: PackedStringArray = _world.events.lines_for_tile(Vector2i(cx, cy))
 		if event_lines.size() > 0:
 			_observation_text += " | 事件: " + event_lines[0]
+	var origin_tile := Vector2i(cx, cy)
+	var explored_n: int = exploration.explored_count()
+	var frontiers: Array = cached_frontier_tiles()
+	if frontiers.size() > 0:
+		var bits: PackedStringArray = PackedStringArray()
+		for ft in frontiers:
+			var edge: Vector2i = ft
+			bits.append("%s(%d,%d)" % [AgentActions.compass_name(origin_tile, edge), edge.x, edge.y])
+		_observation_text += " | 已探索%d格 未探索边界: %s" % [explored_n, ", ".join(bits)]
+	else:
+		_observation_text += " | 已探索%d格 附近无未探索可走边界" % explored_n
+	if _dwell_ticks >= Config.exploration_dwell_hint_ticks():
+		_observation_text += " | 已在这片熟悉区域停留%d tick" % _dwell_ticks
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
 		_observation_text += " | 听到: " + "; ".join(heard)
@@ -1031,7 +1203,7 @@ func _refresh_observation_if_needed() -> void:
 			_clock.next_dawn_tick(),
 			_observation_text,
 		]
-	exploration.update_observer(Vector2i(cx, cy), r, _world, t)
+
 
 func _tile_name(t: int) -> String:
 	match t:
@@ -1156,7 +1328,9 @@ func get_status_line() -> String:
 	var t: int = _world.tile_at(global_position) if _world != null else -1
 	var queue_n: int = _action_queue.size()
 	var state_zh := "空闲"
-	if _state == State.WALKING:
+	if _state == State.DEAD:
+		state_zh = "已死亡"
+	elif _state == State.WALKING:
 		state_zh = "行走"
 	elif _state == State.WAITING:
 		state_zh = "等待"
@@ -1195,14 +1369,19 @@ func get_nearby_item_lines() -> PackedStringArray:
 	var lines: PackedStringArray = []
 	if _world == null or _world.state == null:
 		return lines
-	for item in _world.state.items_near(get_tile_position(), Config.world_item_pickup_radius() + 1):
+	for item in _world.state.items_in_sight(get_tile_position(), perception_radius(), _world):
 		var t: Vector2i = item.get("tile", Vector2i.ZERO)
-		lines.append("%s（%s）在 (%d,%d)%s" % [
-			str(item.get("item_id", "")),
+		var iid: String = str(item.get("item_id", ""))
+		var gather: String = ""
+		if Config.item_is_food(iid) and Config.world_food_gather_in_sight():
+			gather = " 一次可收完视野内同类"
+		lines.append("%s（%s）在 (%d,%d)%s%s" % [
+			iid,
 			str(item.get("display_name", "")),
 			t.x,
 			t.y,
-			" 可食用" if Config.item_is_food(str(item.get("item_id", ""))) else "",
+			" 可食用" if Config.item_is_food(iid) else "",
+			gather,
 		])
 	return lines
 

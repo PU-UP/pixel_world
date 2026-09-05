@@ -33,6 +33,8 @@ var _filter_rev: int = -1
 var tile_revision: int = 0
 var _los_block_ids_cache: Dictionary = {}
 var _terrain_map: TileMapLayer = null
+var food_hotspots: Array = []
+var orchard_spawns: Array = []
 
 func _ready() -> void:
 	rng = RandomNumberGenerator.new()
@@ -293,51 +295,226 @@ func _trace_line(a: Vector2i, b: Vector2i) -> Array:
 	return cells
 
 # ------------------------------------------------------------------
-# 程序化生成:粗略的"椭圆岛屿 + 中心山 + 海岸沙滩 + 边上海水"
+# 程序化生成: 不规则海岸 + 山脊/林带 + 果园空地
 # ------------------------------------------------------------------
 func _generate_island() -> void:
+	food_hotspots.clear()
+	orchard_spawns.clear()
+	var gen: Dictionary = Config.world_generation_cfg()
+	_fill_base_land(gen)
+	_carve_bays(gen)
+	_stamp_mountains(gen)
+	_stamp_scatter_trees(gen)
+	_stamp_groves(gen)
+	_stamp_orchards(gen)
+	_protect_spawns(int(gen.get("spawn_clear_radius", 5)))
+	_seal_border()
+
+
+func _fill_base_land(gen: Dictionary) -> void:
 	tiles.clear()
 	var cx := MAP_WIDTH * 0.5
 	var cy := MAP_HEIGHT * 0.5
 	var rx := MAP_WIDTH * 0.42
 	var ry := MAP_HEIGHT * 0.42
-
+	var coast_noise: float = float(gen.get("coast_noise", 0.06))
+	var coast_wobble: float = float(gen.get("coast_wobble", 0.0))
+	var inner_grass: float = float(gen.get("inner_grass", 0.62))
+	var sand_start: float = float(gen.get("sand_start", 0.78))
+	var sand_end: float = float(gen.get("sand_end", 0.85))
 	for y in MAP_HEIGHT:
 		var row: Array = []
 		for x in MAP_WIDTH:
 			var nx := (x - cx) / rx
 			var ny := (y - cy) / ry
 			var d := sqrt(nx * nx + ny * ny)
-			var noise := rng.randf_range(-0.06, 0.06)
-			var dist := d + noise
-
+			var ang := atan2(ny, nx)
+			var dist := d + rng.randf_range(-coast_noise, coast_noise) + coast_wobble * sin(ang * 3.0)
 			var t: int
-			if dist < 0.55:
+			if dist < inner_grass:
 				t = Tile.GRASS
-			elif dist < 0.62:
-				t = Tile.GRASS
-			elif dist < 0.78:
-				# 海岸 + 沙滩混合
-				if rng.randf() < 0.6:
-					t = Tile.GRASS
-				else:
-					t = Tile.SAND
-			elif dist < 0.85:
+			elif dist < sand_start:
+				t = Tile.GRASS if rng.randf() < 0.55 else Tile.SAND
+			elif dist < sand_end:
 				t = Tile.SAND
 			else:
 				t = Tile.WATER
-
-			# 中心山
-			if dist < 0.20 and rng.randf() < 0.35:
-				t = Tile.MOUNTAIN
-			# 散落树
-			elif t == Tile.GRASS and rng.randf() < 0.08:
-				t = Tile.TREE
-			# 边界强制海水,封口
-			if x == 0 or y == 0 or x == MAP_WIDTH - 1 or y == MAP_HEIGHT - 1:
-				t = Tile.WATER
 			row.append(t)
 		tiles.append(row)
+
+
+func _carve_bays(gen: Dictionary) -> void:
+	var bays: Variant = gen.get("bays", [])
+	if typeof(bays) != TYPE_ARRAY:
+		return
+	for raw in bays:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var center := _center_of(raw)
+		var radius: float = float(raw.get("radius", 8))
+		_stamp_disk(center, radius, Tile.WATER, 1.0)
+
+
+func _stamp_mountains(gen: Dictionary) -> void:
+	var cx := MAP_WIDTH * 0.5
+	var cy := MAP_HEIGHT * 0.5
+	var rx := MAP_WIDTH * 0.42
+	var ry := MAP_HEIGHT * 0.42
+	var core: float = float(gen.get("mountain_core", 0.20))
+	var core_chance: float = float(gen.get("mountain_core_chance", 0.35))
+	for y in MAP_HEIGHT:
+		for x in MAP_WIDTH:
+			var nx := (x - cx) / rx
+			var ny := (y - cy) / ry
+			var d := sqrt(nx * nx + ny * ny)
+			if d < core and _is_land(Vector2i(x, y)) and rng.randf() < core_chance:
+				tiles[y][x] = Tile.MOUNTAIN
+	var ridges: Variant = gen.get("ridges", [])
+	if typeof(ridges) != TYPE_ARRAY:
+		return
+	for raw in ridges:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var center := _center_of(raw)
+		var radius: float = float(raw.get("radius", 6))
+		var chance: float = float(raw.get("chance", 0.45))
+		_stamp_disk(center, radius, Tile.MOUNTAIN, chance, true)
+
+
+func _stamp_scatter_trees(gen: Dictionary) -> void:
+	var chance: float = float(gen.get("tree_scatter", 0.08))
+	for y in MAP_HEIGHT:
+		for x in MAP_WIDTH:
+			if tiles[y][x] == Tile.GRASS and rng.randf() < chance:
+				tiles[y][x] = Tile.TREE
+
+
+func _stamp_groves(gen: Dictionary) -> void:
+	var groves: Variant = gen.get("groves", [])
+	if typeof(groves) != TYPE_ARRAY:
+		return
+	for raw in groves:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var center := _center_of(raw)
+		var radius: float = float(raw.get("radius", 8))
+		var chance: float = float(raw.get("tree_chance", 0.5))
+		_stamp_disk(center, radius, Tile.TREE, chance, true)
+
+
+func _stamp_orchards(gen: Dictionary) -> void:
+	var orchards: Variant = gen.get("orchards", [])
+	if typeof(orchards) != TYPE_ARRAY:
+		return
+	for raw in orchards:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var center := _center_of(raw)
+		var radius: float = maxf(2.0, float(raw.get("radius", 5)))
+		var ring: float = maxf(1.0, float(raw.get("ring", 2)))
+		var r2: float = radius + ring
+		for y in range(center.y - int(ceil(r2)), center.y + int(ceil(r2)) + 1):
+			for x in range(center.x - int(ceil(r2)), center.x + int(ceil(r2)) + 1):
+				var tile := Vector2i(x, y)
+				if not _in_bounds(tile):
+					continue
+				var d := Vector2(x - center.x, y - center.y).length()
+				if d <= radius:
+					if tiles[y][x] != Tile.WATER:
+						tiles[y][x] = Tile.GRASS
+					if d <= radius - 0.5 and tiles[y][x] == Tile.GRASS:
+						food_hotspots.append(tile)
+				elif d <= r2 and tiles[y][x] == Tile.GRASS:
+					tiles[y][x] = Tile.TREE
+		_seed_orchard_food(raw, center, radius)
+
+
+func _seed_orchard_food(raw: Dictionary, center: Vector2i, radius: float) -> void:
+	var foods: Variant = raw.get("food", [])
+	if typeof(foods) != TYPE_ARRAY:
+		return
+	var candidates: Array = []
+	for spot in food_hotspots:
+		var tile: Vector2i = spot
+		if Vector2(tile.x - center.x, tile.y - center.y).length() <= radius:
+			candidates.append(tile)
+	for i in candidates.size():
+		var j: int = rng.randi_range(i, candidates.size() - 1)
+		var tmp: Vector2i = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
+	var placed: int = 0
+	for item_raw in foods:
+		if placed >= candidates.size():
+			break
+		var item_id: String = str(item_raw).strip_edges()
+		if item_id.is_empty() or not Config.item_is_food(item_id):
+			continue
+		var tile: Vector2i = candidates[placed]
+		placed += 1
+		orchard_spawns.append({"item_id": item_id, "tile": tile})
+
+
+func _protect_spawns(clear_radius: int) -> void:
+	for cfg in Config.all_agents():
+		if typeof(cfg) != TYPE_DICTIONARY:
+			continue
+		var spawn: Array = cfg.get("spawn_tile", [])
+		if spawn.size() < 2:
+			continue
+		var origin := Vector2i(int(spawn[0]), int(spawn[1]))
+		for y in range(origin.y - clear_radius, origin.y + clear_radius + 1):
+			for x in range(origin.x - clear_radius, origin.x + clear_radius + 1):
+				var tile := Vector2i(x, y)
+				if not _in_bounds(tile):
+					continue
+				if absi(x - origin.x) + absi(y - origin.y) > clear_radius:
+					continue
+				if tiles[y][x] == Tile.TREE or tiles[y][x] == Tile.MOUNTAIN:
+					tiles[y][x] = Tile.GRASS
+
+
+func _seal_border() -> void:
+	for y in MAP_HEIGHT:
+		tiles[y][0] = Tile.WATER
+		tiles[y][MAP_WIDTH - 1] = Tile.WATER
+	for x in MAP_WIDTH:
+		tiles[0][x] = Tile.WATER
+		tiles[MAP_HEIGHT - 1][x] = Tile.WATER
+
+
+func _stamp_disk(center: Vector2i, radius: float, terrain: int, chance: float, land_only: bool = false) -> void:
+	var r: int = int(ceil(radius))
+	for y in range(center.y - r, center.y + r + 1):
+		for x in range(center.x - r, center.x + r + 1):
+			var tile := Vector2i(x, y)
+			if not _in_bounds(tile):
+				continue
+			if Vector2(x - center.x, y - center.y).length() > radius:
+				continue
+			if land_only and not _is_land(tile):
+				continue
+			if chance < 1.0 and rng.randf() >= chance:
+				continue
+			tiles[y][x] = terrain
+
+
+func _center_of(raw: Dictionary) -> Vector2i:
+	var arr: Array = raw.get("center", [])
+	if arr.size() < 2:
+		return Vector2i(int(MAP_WIDTH * 0.5), int(MAP_HEIGHT * 0.5))
+	return Vector2i(int(arr[0]), int(arr[1]))
+
+
+func _is_land(tile: Vector2i) -> bool:
+	if not _in_bounds(tile):
+		return false
+	var t: int = tiles[tile.y][tile.x]
+	return t == Tile.GRASS or t == Tile.SAND or t == Tile.TREE or t == Tile.MOUNTAIN
+
+
+func _in_bounds(tile: Vector2i) -> bool:
+	return tile.x >= 0 and tile.y >= 0 and tile.x < MAP_WIDTH and tile.y < MAP_HEIGHT
 
 # ------------------------------------------------------------------
 # 渲染

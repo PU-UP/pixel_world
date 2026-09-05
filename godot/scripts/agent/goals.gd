@@ -53,6 +53,12 @@ func apply_save(current: String, long_term: String) -> void:
 
 func format_for_prompt() -> String:
 	var parts: PackedStringArray = PackedStringArray()
+	var survive: String = Config.survive_goal_title()
+	var detail: String = Config.survive_goal_detail()
+	if detail.is_empty():
+		parts.append("强制目标: %s" % survive)
+	else:
+		parts.append("强制目标: %s。%s" % [survive, detail])
 	if not long_term_goal.is_empty():
 		parts.append("长期目标: %s" % long_term_goal)
 	if not current_goal.is_empty():

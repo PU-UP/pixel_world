@@ -89,6 +89,8 @@ func _on_tick(_tick_index: int) -> void:
 		return
 	if _player == null:
 		return
+	if _player.is_dead():
+		return
 	if _player.is_sleeping() or _player.is_waiting():
 		return
 	if Config.decision_skip_while_walking() and _player.is_walking():
@@ -109,7 +111,6 @@ func _request_decision() -> void:
 	var retrieved := _memory.retrieve_for_query(guard["text"], tick)
 	var memory_lines := _format_memories(retrieved)
 	var perception_ids := _perception_agent_ids()
-	var audio_ids := _audio_agent_ids()
 	var ground_ids := _ground_item_ids()
 	var heard_lines := _player.get_recent_heard_lines(4)
 	var plan_lines := _planning.get_remaining_steps() if _planning else PackedStringArray()
@@ -119,35 +120,45 @@ func _request_decision() -> void:
 	var walkable_near := AgentActions.nearby_walkable_tiles(
 		world,
 		_player.get_tile_position(),
-		2,
+		Config.exploration_local_move_radius(),
 	)
+	var frontier_lines: PackedStringArray = PackedStringArray()
+	for ft in _player.cached_frontier_tiles():
+		var tile: Vector2i = ft
+		frontier_lines.append("(%d,%d)" % [tile.x, tile.y])
 	var ctx: Dictionary = AgentActions.build_context(_player, _comm, world)
+	var social_ids := _audio_agent_ids()
 	var tools: Array = DecisionPrompt.tool_definitions_for_context(
-		_audio_agent_ids(),
+		social_ids,
 		_perception_agent_ids(),
 		_ground_item_ids(),
 		_packed_strings(ctx.get("pickup_item_ids", [])),
 		ctx.get("inventory", []),
 	)
 	var goal_lines := _goal_lines()
+	var pending := _player.get_pending_reply_line()
+	var pending_from := _player.get_pending_reply_from()
+	if not pending.is_empty() and not _id_in_packed(social_ids, pending_from):
+		pending = ""
 	var messages: Array = DecisionPrompt.build_messages(
 		_persona.describe(),
 		guard["text"],
 		_player.get_status_line(),
 		memory_lines,
 		perception_ids,
-		audio_ids,
+		social_ids,
 		perception_ids,
 		ground_ids,
 		heard_lines,
 		plan_lines,
 		rel_lines,
 		item_lines,
-		_player.get_pending_reply_line(),
+		pending,
 		_player.get_last_say_text(),
 		walkable_near,
 		_bad_move_lines(),
 		goal_lines,
+		frontier_lines,
 	)
 	_busy = true
 	_last_error = ""
@@ -365,6 +376,8 @@ func _audio_agent_ids() -> PackedStringArray:
 	if _comm == null or _player == null:
 		return ids
 	for p in _comm.players_in_audio(_player):
+		if p.is_dead():
+			continue
 		ids.append(str(p.agent_id))
 	return ids
 
@@ -373,14 +386,25 @@ func _ground_item_ids() -> PackedStringArray:
 	var ids: PackedStringArray = []
 	if _player == null or _player.game_world() == null or _player.game_world().state == null:
 		return ids
-	for item in _player.game_world().state.items_near(
+	for item in _player.game_world().state.items_in_sight(
 		_player.get_tile_position(),
-		_player.perception_radius() + 1,
+		_player.perception_radius(),
+		_player.game_world(),
 	):
 		var iid: String = str(item.get("item_id", ""))
-		if not iid.is_empty():
+		if not iid.is_empty() and not iid in ids:
 			ids.append(iid)
 	return ids
+
+
+func _id_in_packed(ids: PackedStringArray, id: String) -> bool:
+	var key: String = id.strip_edges()
+	if key.is_empty():
+		return false
+	for entry in ids:
+		if str(entry).strip_edges() == key:
+			return true
+	return false
 
 
 func _packed_strings(items: Array) -> PackedStringArray:

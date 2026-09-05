@@ -106,6 +106,8 @@ func _on_tick(_tick_index: int) -> void:
 	if not enabled or _clock.paused or _busy:
 		return
 	_ticks_since_plan += 1
+	if _player != null and _player.is_dead():
+		return
 	if _player != null and (_player.is_sleeping() or _player.is_waiting()):
 		return
 	if Config.decision_skip_while_walking() and _player != null and _player.is_walking():

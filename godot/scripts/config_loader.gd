@@ -196,6 +196,24 @@ func vitals_food_inventory_max() -> int:
 	return maxi(1, int(vitals_cfg().get("food_inventory_max", 3)))
 
 
+func vitals_starting_food() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	var raw: Variant = vitals_cfg().get("starting_food", [])
+	if typeof(raw) != TYPE_ARRAY:
+		return out
+	for item in raw:
+		var item_id: String = str(item).strip_edges()
+		if item_id.is_empty() or not item_is_food(item_id):
+			continue
+		out.append(item_id)
+	return out
+
+
+func is_food_gather_token(item_id: String) -> bool:
+	var key: String = item_id.strip_edges().to_lower()
+	return key in ["all_food", "all", "food", "nearby_food"]
+
+
 func vitals_bar_energy() -> bool:
 	var bar: Variant = vitals_cfg().get("bar", {})
 	if typeof(bar) != TYPE_DICTIONARY:
@@ -208,6 +226,34 @@ func vitals_bar_satiety() -> bool:
 	if typeof(bar) != TYPE_DICTIONARY:
 		return true
 	return bool(bar.get("satiety", true))
+
+
+func vitals_bar_health() -> bool:
+	var bar: Variant = vitals_cfg().get("bar", {})
+	if typeof(bar) != TYPE_DICTIONARY:
+		return true
+	return bool(bar.get("health", true))
+
+
+func vitals_health_cfg() -> Dictionary:
+	var raw: Variant = vitals_cfg().get("health", {})
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
+
+
+func goals_cfg() -> Dictionary:
+	return runtime.get("goals", {})
+
+
+func survive_goal_title() -> String:
+	var title: String = str(goals_cfg().get("survive", "活下去")).strip_edges()
+	return title if not title.is_empty() else "活下去"
+
+
+func survive_goal_detail() -> String:
+	return str(goals_cfg().get(
+		"survive_detail",
+		"死亡不可逆。健康在黎明结算：连续缺觉或断食会下降，降至 0 即死亡。没有自杀原语。",
+	)).strip_edges()
 
 
 func item_def(item_id: String) -> Dictionary:
@@ -229,13 +275,18 @@ func food_count_in(inventory: Array) -> int:
 
 
 func can_carry_item(inventory: Array, item_id: String) -> bool:
-	if not item_is_food(item_id):
+	if not is_food_gather_token(item_id) and not item_is_food(item_id):
 		return true
 	return food_count_in(inventory) < vitals_food_inventory_max()
 
 
 func world_food_spawn_cfg() -> Dictionary:
 	var raw: Variant = world_cfg.get("food_spawn", {})
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
+
+
+func world_generation_cfg() -> Dictionary:
+	var raw: Variant = world_cfg.get("generation", {})
 	return raw if typeof(raw) == TYPE_DICTIONARY else {}
 
 
@@ -269,6 +320,26 @@ func observability_cfg() -> Dictionary:
 
 func world_item_pickup_radius() -> int:
 	return int(world_cfg.get("item_pickup_radius", 1))
+
+
+func world_food_gather_in_sight() -> bool:
+	return bool(world_cfg.get("food_gather_in_sight", true))
+
+
+func exploration_frontier_prompt_max() -> int:
+	return maxi(1, int(exploration_cfg().get("frontier_prompt_max", 8)))
+
+
+func exploration_local_move_radius() -> int:
+	return maxi(1, int(exploration_cfg().get("local_move_radius", 1)))
+
+
+func exploration_dwell_hint_ticks() -> int:
+	return maxi(1, int(exploration_cfg().get("dwell_hint_ticks", 24)))
+
+
+func exploration_dwell_radius() -> int:
+	return maxi(0, int(exploration_cfg().get("dwell_radius", 2)))
 
 
 func world_item_defs() -> Dictionary:

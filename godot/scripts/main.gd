@@ -369,7 +369,8 @@ func _update_roster_hud() -> void:
 		var name_s: String = str(rec["persona"].display_name)
 		var vitals_s := ""
 		if p.vitals.enabled():
-			vitals_s = " 力%d/%d 饱%d/%d" % [
+			vitals_s = " 健%d 力%d/%d 饱%d/%d" % [
+				int(round(p.vitals.health)),
 				int(round(p.vitals.energy)),
 				int(round(p.vitals.energy_ceiling)),
 				int(round(p.vitals.satiety)),
