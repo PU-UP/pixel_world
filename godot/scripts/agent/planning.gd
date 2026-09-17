@@ -102,15 +102,59 @@ func advance_step() -> void:
 		_step_index += 1
 
 
+func step_matches(action: Dictionary) -> bool:
+	if action.is_empty() or _steps.is_empty() or _step_index >= _steps.size():
+		return false
+	var step: String = str(_steps[_step_index]).strip_edges().to_lower()
+	if step.is_empty():
+		return false
+	var kind: String = str(action.get("kind", "")).strip_edges().to_upper()
+	if kind.is_empty():
+		return false
+	var step_compact: String = step.replace(" ", "")
+	if step.find(kind.to_lower()) >= 0:
+		if kind == "MOVE_TO":
+			return _move_matches_step(action, step_compact)
+		return true
+	match kind:
+		"MOVE_TO":
+			return _move_matches_step(action, step_compact)
+		"SAY":
+			return _contains_any(step, ["说", "交谈", "招呼", "对话", "回答"])
+		"PICK_UP":
+			return _contains_any(step, ["捡", "拾", "采集", "收"])
+		"USE":
+			return _contains_any(step, ["吃", "用", "喂"])
+		"GIVE":
+			return _contains_any(step, ["给", "递", "送"])
+		"SLEEP":
+			return _contains_any(step, ["睡", "休息"])
+		"SHARE_MAP":
+			return _contains_any(step, ["地图", "share"])
+		"OBSERVE":
+			return _contains_any(step, ["观察", "看"])
+		"WAIT":
+			return _contains_any(step, ["等", "wait"])
+		"EMOTE":
+			return _contains_any(step, ["表情", "emote"])
+		_:
+			return false
+
+
+func advance_if_matches(action: Dictionary) -> bool:
+	if not step_matches(action):
+		return false
+	advance_step()
+	return true
+
+
 func _on_tick(_tick_index: int) -> void:
 	if not enabled or _clock.paused or _busy:
 		return
 	_ticks_since_plan += 1
 	if _player != null and _player.is_dead():
 		return
-	if _player != null and (_player.is_sleeping() or _player.is_waiting()):
-		return
-	if Config.decision_skip_while_walking() and _player != null and _player.is_walking():
+	if _player != null and (_player.is_sleeping() or _player.is_waiting() or _player.is_walking()):
 		return
 	var trigger: int = int(Config.planning_cfg().get("trigger_ticks", 50))
 	if _steps.is_empty() or _step_index >= _steps.size() or _ticks_since_plan >= trigger:
@@ -124,6 +168,11 @@ func _request_plan() -> void:
 	var nearby := _nearby_ids()
 	var rel_lines := _relationships.format_for_decision(nearby) if _relationships else PackedStringArray()
 	var goal_text := _goals.format_for_prompt() if _goals != null else ""
+	var frontier_lines: PackedStringArray = PackedStringArray()
+	if _player != null:
+		for ft in _player.cached_frontier_tiles():
+			var tile: Vector2i = ft
+			frontier_lines.append("(%d,%d)" % [tile.x, tile.y])
 	var messages: Array = PlanningPrompt.build_messages(
 		_persona.describe(),
 		_player.get_status_line(),
@@ -131,6 +180,7 @@ func _request_plan() -> void:
 		_player.get_action_log_lines(4),
 		rel_lines,
 		goal_text,
+		frontier_lines,
 	)
 	_busy = true
 	_llm.request_chat(messages, {
@@ -153,6 +203,7 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	_steps = _parse_steps(text)
 	_step_index = 0
 	_ticks_since_plan = 0
+	_sync_current_goal()
 	var tick := int(meta.get("tick", _clock.current_tick()))
 	_memory.append_event("plan", text, tick, 0.2, 0.1, 0.5)
 	if _logger != null:
@@ -202,3 +253,38 @@ func _parse_steps(text: String) -> Array:
 		if steps.size() >= max_steps:
 			break
 	return steps
+
+
+func _sync_current_goal() -> void:
+	if _goals == null:
+		return
+	var headline: String = ""
+	if _step_index < _steps.size():
+		headline = str(_steps[_step_index]).strip_edges()
+	elif not _steps.is_empty():
+		headline = str(_steps[0]).strip_edges()
+	if headline.is_empty():
+		return
+	if headline.length() > 40:
+		headline = headline.substr(0, 40)
+	_goals.set_current(headline)
+
+
+func _move_matches_step(action: Dictionary, step_compact: String) -> bool:
+	var params: Dictionary = action.get("params", {})
+	var x: int = int(params.get("x", 0))
+	var y: int = int(params.get("y", 0))
+	var coord: String = "(%d,%d)" % [x, y]
+	var coord_alt: String = "%d,%d" % [x, y]
+	if step_compact.find(coord) >= 0 or step_compact.find(coord_alt) >= 0:
+		return true
+	if step_compact.find("(") >= 0 and step_compact.find(",") >= 0:
+		return false
+	return _contains_any(step_compact, ["前往", "探索", "边界", "果园", "南滩", "北脊", "西林", "东岸", "草甸"])
+
+
+func _contains_any(text: String, tokens: Array) -> bool:
+	for token in tokens:
+		if text.find(str(token)) >= 0:
+			return true
+	return false

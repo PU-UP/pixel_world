@@ -59,6 +59,34 @@ func region_at(tile: Vector2i) -> Dictionary:
 	return {"id": best_id, "name": best_name}
 
 
+func nearest_landmarks(tile: Vector2i, limit: int, max_dist: int) -> Array:
+	var current_id: String = region_id_at(tile)
+	var ranked: Array = []
+	for reg in Config.world_region_defs():
+		if typeof(reg) != TYPE_DICTIONARY:
+			continue
+		var rid: String = str(reg.get("id", ""))
+		if rid.is_empty() or rid == current_id:
+			continue
+		var center_arr: Array = reg.get("center", [])
+		if center_arr.size() < 2:
+			continue
+		var center := Vector2i(int(center_arr[0]), int(center_arr[1]))
+		var dist: int = _manhattan(tile, center)
+		if dist > max_dist:
+			continue
+		ranked.append({
+			"id": rid,
+			"name": str(reg.get("name", rid)),
+			"tile": center,
+			"dist": dist,
+		})
+	ranked.sort_custom(func(a, b): return int(a["dist"]) < int(b["dist"]))
+	if ranked.size() > limit:
+		return ranked.slice(0, limit)
+	return ranked
+
+
 func describe_item(item_id: String) -> String:
 	var defs: Dictionary = Config.world_item_defs()
 	if not defs.has(item_id):

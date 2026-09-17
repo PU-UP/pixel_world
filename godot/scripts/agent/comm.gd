@@ -72,6 +72,8 @@ func deliver_emote(speaker: Player, emoji: String, tick: int) -> Dictionary:
 		return {"ok": false, "error": "empty emoji"}
 	var recipient_ids: Array = []
 	for p in players_in_perception(speaker):
+		if p.is_dead():
+			continue
 		p.receive_emote(str(speaker.agent_id), mark, tick)
 		recipient_ids.append(str(p.agent_id))
 	return {"ok": true, "error": "", "recipient_ids": recipient_ids}
@@ -132,7 +134,7 @@ func _merge_exploration(a: Player, b: Player) -> int:
 	return added_ab + added_ba
 
 
-func players_in_audio(observer: Player) -> Array:
+func players_in_sight(observer: Player) -> Array:
 	var out: Array = []
 	for p in players_in_perception(observer):
 		if not p.is_dead():

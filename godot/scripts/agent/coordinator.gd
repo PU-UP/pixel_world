@@ -93,8 +93,8 @@ func set_agent_mode(enabled: bool) -> void:
 		var player: PlayerScript = rec["player"]
 		var alive: bool = not player.is_dead()
 		rec["decision"].set_enabled(enabled and alive)
-		rec["planning"].enabled = alive
-		rec["reflection"].enabled = alive
+		rec["planning"].enabled = enabled and alive
+		rec["reflection"].enabled = enabled and alive
 
 
 func reset_world(agent_mode: bool = false) -> void:
@@ -271,7 +271,7 @@ func _spawn_agents() -> void:
 		planning.setup(player, _clock, _llm, persona, memory, comm, relationships, goals)
 		planning.set_logger(_logger)
 		decision.setup(player, _clock, _llm, _logger, persona, memory, comm, planning, relationships, goals)
-		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id), player)
+		reflection.setup(memory, _clock, _llm, persona, str(player.agent_id), player, goals)
 		reflection.set_logger(_logger)
 
 		records.append({

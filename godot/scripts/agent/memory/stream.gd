@@ -38,6 +38,9 @@ func append_event(
 		"category": category,
 		"text": text,
 		"importance": importance,
+		"emotional_intensity": emotional_intensity,
+		"social_relevance": social_relevance,
+		"goal_relevance": goal_relevance,
 	}
 	var id := _store.append(mem)
 	_event_count += 1

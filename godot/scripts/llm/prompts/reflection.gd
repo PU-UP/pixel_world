@@ -7,7 +7,8 @@ class_name ReflectionPrompt
 static func build_messages(persona_desc: String, recent_memories: Array) -> Array:
 	var system := """You are an autonomous agent reflecting on recent experiences in a 2D pixel island world.
 Summarize what you learned about yourself, others, and the world.
-Be concise (2-4 sentences). Write in first person, in Simplified Chinese (简体中文)."""
+Be concise (2-4 sentences). Write in first person, in Simplified Chinese (简体中文).
+End with one extra line exactly: CURRENT_GOAL: <接下来要做的事，不超过20字>"""
 	var lines: PackedStringArray = []
 	for mem in recent_memories:
 		lines.append("[t%d|%s] %s" % [

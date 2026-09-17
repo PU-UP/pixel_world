@@ -51,6 +51,8 @@ var _dwell_anchor: Vector2i = Vector2i.ZERO
 var _dwell_ticks: int = 0
 var _frontier_cache_tick: int = -999
 var _frontier_cache: Array = []
+var _walk_sight_ids: Dictionary = {}
+var _walk_vitals_nudge_done: bool = false
 var inventory: Array = []
 var vitals: AgentVitals = AgentVitals.new()
 var exploration: ExplorationMap = ExplorationMap.new()
@@ -343,6 +345,17 @@ func enqueue_action(action: Dictionary) -> void:
 		return
 	_action_queue.append(action)
 	_log_action(_clock.current_tick() if _clock else -1, "enqueue", AgentActions.format_action(action))
+	if _state == State.WALKING and not AgentActions.interrupts_walk(str(action.get("kind", ""))):
+		_dedupe_queued_moves()
+		return
+	if _state == State.WAITING:
+		if not AgentActions.interrupts_walk(str(action.get("kind", ""))):
+			_dedupe_queued_moves()
+			return
+		_wait_remaining = 0
+		_state = State.IDLE
+		modulate = Color.WHITE
+		_current_action = {}
 	if _state == State.IDLE:
 		_pump_next_action()
 	elif _state == State.WALKING:
@@ -489,6 +502,7 @@ func _start_move_to(gx: int, gy: int) -> void:
 	_walk_anchor = global_position
 	_walk_stuck_time = 0.0
 	_state = State.WALKING
+	_snapshot_walk_sight()
 	_log_action(_clock.current_tick() if _clock else -1, "move", "→ (%d, %d)  path_len=%d" % [gx, gy, path.size()])
 	_log_obs_action(AgentActions.KIND_MOVE_TO, {"x": gx, "y": gy}, true, "path_len=%d" % path.size())
 
@@ -760,6 +774,12 @@ func _execute_use(action: Dictionary) -> void:
 		if Config.item_is_food(item_id) and fed != null and fed.is_dead():
 			_log_action(tick, "use", "FAILED target dead: %s" % on_target)
 			_log_obs_action(AgentActions.KIND_USE, p, false, "target dead", on_target)
+			_pump_next_action()
+			return
+		if not Config.item_is_usable(item_id):
+			var reason: String = Config.item_unusable_reason(item_id)
+			_log_action(tick, "use", "FAILED %s" % reason)
+			_log_obs_action(AgentActions.KIND_USE, p, false, reason, item_id)
 			_pump_next_action()
 			return
 		if Config.item_is_food(item_id) and fed != null and fed.vitals.enabled():
@@ -1047,6 +1067,36 @@ func food_count() -> int:
 	return Config.food_count_in(inventory)
 
 
+func can_relieve_vitals_in_place() -> bool:
+	if not vitals.enabled() or is_dead():
+		return false
+	var hungry_or_tired: bool = vitals.is_hungry() or vitals.is_tired()
+	if hungry_or_tired and food_count() > 0:
+		return true
+	if not vitals.is_tired():
+		return false
+	if _clock == null or not _clock.time_enabled():
+		return false
+	var phase: String = _clock.phase()
+	return phase == "dusk" or phase == "night"
+
+
+func _dedupe_queued_moves() -> void:
+	var kept: Array = []
+	var last_move: Dictionary = {}
+	for raw in _action_queue:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var action: Dictionary = raw
+		if str(action.get("kind", "")) == AgentActions.KIND_MOVE_TO:
+			last_move = action
+			continue
+		kept.append(action)
+	if not last_move.is_empty():
+		kept.append(last_move)
+	_action_queue = kept
+
+
 func receive_share_offer(from_id: String, tick: int) -> void:
 	_log_action(tick, "heard", "%s 提议共享已探索地图（需双方 SHARE_MAP 达成一致）" % from_id)
 
@@ -1127,32 +1177,20 @@ func _refresh_observation_if_needed() -> void:
 	var r: int = perception_radius()
 	exploration.update_observer(Vector2i(cx, cy), r, _world, t)
 	_frontier_cache_tick = -999
-	var counts: Dictionary = {}
 	var origin := Vector2i(cx, cy)
-	for dy in range(-r, r + 1):
-		for dx in range(-r, r + 1):
-			if dx * dx + dy * dy > r * r:
-				continue
-			var tx: int = cx + dx
-			var ty: int = cy + dy
-			if not _world.has_line_of_sight(origin, Vector2i(tx, ty)):
-				continue
-			var name: String = _tile_name(_world.tile_at(Vector2(tx * TILE_SIZE, ty * TILE_SIZE)))
-			counts[name] = counts.get(name, 0) + 1
-	var parts: PackedStringArray = []
-	for k in counts.keys():
-		parts.append("%s×%d" % [k, counts[k]])
-	var terrain_text := ", ".join(parts) if parts.size() > 0 else "（空）"
-	var agent_parts: PackedStringArray = []
+	var terrain_text := _observation_terrain_summary(origin, r)
+	var living_parts: PackedStringArray = PackedStringArray()
+	var corpse_parts: PackedStringArray = PackedStringArray()
 	if _comm != null:
 		for p in _comm.players_in_perception(self):
 			var pt: Vector2i = p.get_tile_position()
 			var extra := ""
 			if p.is_dead():
-				extra = " 已死亡"
-			elif p.is_sleeping():
+				corpse_parts.append("%s@(%d,%d) 已死亡" % [str(p.agent_id), pt.x, pt.y])
+				continue
+			if p.is_sleeping():
 				extra = " 入睡"
-			if not p.is_dead() and p.vitals.enabled():
+			if p.vitals.enabled():
 				if p.vitals.is_tired():
 					extra += " 疲惫"
 				if p.vitals.is_hungry():
@@ -1162,47 +1200,137 @@ func _refresh_observation_if_needed() -> void:
 			var face: String = p.current_emote()
 			if not face.is_empty():
 				extra += " %s" % face
-			agent_parts.append("%s@(%d,%d)%s" % [str(p.agent_id), pt.x, pt.y, extra])
-	if agent_parts.size() > 0:
-		_observation_text = "区域=%s | %s | 附近角色: %s" % [region_name, terrain_text, ", ".join(agent_parts)]
-	else:
-		_observation_text = "区域=%s | %s" % [region_name, terrain_text]
-	var item_parts: PackedStringArray = []
+			living_parts.append("%s@(%d,%d)%s" % [str(p.agent_id), pt.x, pt.y, extra])
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("区域=%s" % region_name)
+	lines.append("地形: %s" % terrain_text)
+	var landmarks: Array = []
 	if _world != null and _world.state != null:
-		for item in _world.state.items_in_sight(Vector2i(cx, cy), r, _world):
+		landmarks = _world.state.nearest_landmarks(
+			origin,
+			Config.observation_landmark_max(),
+			Config.observation_landmark_max_dist(),
+		)
+	if landmarks.size() > 0:
+		var mark_bits: PackedStringArray = PackedStringArray()
+		for lm in landmarks:
+			var ltile: Vector2i = lm.get("tile", Vector2i.ZERO)
+			mark_bits.append("%s(%d,%d)距%d格" % [
+				str(lm.get("name", "")),
+				ltile.x,
+				ltile.y,
+				int(lm.get("dist", 0)),
+			])
+		lines.append("地标: %s" % " ".join(mark_bits))
+	if living_parts.size() > 0:
+		lines.append("活人: %s" % ", ".join(living_parts))
+	else:
+		lines.append("活人: 无")
+	if corpse_parts.size() > 0:
+		lines.append("尸体: %s" % ", ".join(corpse_parts))
+	var food_parts: PackedStringArray = PackedStringArray()
+	var other_parts: PackedStringArray = PackedStringArray()
+	if _world != null and _world.state != null:
+		for item in _world.state.items_in_sight(origin, r, _world):
 			var item_tile: Vector2i = item.get("tile", Vector2i.ZERO)
-			item_parts.append("%s@(%d,%d)" % [str(item.get("item_id", "?")), item_tile.x, item_tile.y])
-	if item_parts.size() > 0:
-		_observation_text += " | 物品: " + ", ".join(item_parts)
+			var iid: String = str(item.get("item_id", "?"))
+			var label: String = "%s@(%d,%d)" % [iid, item_tile.x, item_tile.y]
+			if Config.item_is_food(iid):
+				food_parts.append(label)
+			else:
+				other_parts.append(label)
+	if food_parts.size() > 0:
+		lines.append("食物: %s" % ", ".join(food_parts))
+	if other_parts.size() > 0:
+		lines.append("其它物品: %s" % ", ".join(other_parts))
 	if _world.events != null:
-		var event_lines: PackedStringArray = _world.events.lines_for_tile(Vector2i(cx, cy))
+		var event_lines: PackedStringArray = _world.events.lines_for_tile(origin)
 		if event_lines.size() > 0:
-			_observation_text += " | 事件: " + event_lines[0]
-	var origin_tile := Vector2i(cx, cy)
+			lines.append("事件: %s" % event_lines[0])
 	var explored_n: int = exploration.explored_count()
 	var frontiers: Array = cached_frontier_tiles()
-	if frontiers.size() > 0:
+	var frontier_n: int = mini(frontiers.size(), Config.observation_frontier_max())
+	if frontier_n > 0:
 		var bits: PackedStringArray = PackedStringArray()
-		for ft in frontiers:
-			var edge: Vector2i = ft
-			bits.append("%s(%d,%d)" % [AgentActions.compass_name(origin_tile, edge), edge.x, edge.y])
-		_observation_text += " | 已探索%d格 未探索边界: %s" % [explored_n, ", ".join(bits)]
+		for i in frontier_n:
+			var edge: Vector2i = frontiers[i]
+			bits.append("%s(%d,%d)" % [AgentActions.compass_name(origin, edge), edge.x, edge.y])
+		lines.append("已探索%d格 未探索: %s" % [explored_n, ", ".join(bits)])
 	else:
-		_observation_text += " | 已探索%d格 附近无未探索可走边界" % explored_n
+		lines.append("已探索%d格 附近无未探索可走边界" % explored_n)
 	if _dwell_ticks >= Config.exploration_dwell_hint_ticks():
-		_observation_text += " | 已在这片熟悉区域停留%d tick" % _dwell_ticks
+		lines.append("已在这片熟悉区域停留%d tick" % _dwell_ticks)
 	var heard := get_recent_heard_lines(2)
 	if heard.size() > 0:
-		_observation_text += " | 听到: " + "; ".join(heard)
+		lines.append("听到: " + "; ".join(heard))
 	var emotes := get_recent_emote_lines(2)
 	if emotes.size() > 0:
-		_observation_text += " | 表情: " + "; ".join(emotes)
+		lines.append("表情: " + "; ".join(emotes))
+	_observation_text = " | ".join(lines)
 	if _clock != null and _clock.time_enabled():
 		_observation_text = "%s 下次黎明t%d | %s" % [
 			_clock.format_phase_clock(),
 			_clock.next_dawn_tick(),
 			_observation_text,
 		]
+
+
+func _observation_terrain_summary(origin: Vector2i, radius: int) -> String:
+	var counts: Dictionary = {}
+	var total: int = 0
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			if dx * dx + dy * dy > radius * radius:
+				continue
+			var tile := Vector2i(origin.x + dx, origin.y + dy)
+			if not _world.has_line_of_sight(origin, tile):
+				continue
+			var name: String = _tile_name(_world.tile_at(Vector2(tile.x * TILE_SIZE, tile.y * TILE_SIZE)))
+			counts[name] = int(counts.get(name, 0)) + 1
+			total += 1
+	if total <= 0 or counts.is_empty():
+		return "（空）"
+	var ranked: Array = []
+	for name in counts.keys():
+		ranked.append({"name": str(name), "n": int(counts[name])})
+	ranked.sort_custom(func(a, b): return int(a["n"]) > int(b["n"]))
+	var majority: String = str(ranked[0]["name"])
+	var extras: PackedStringArray = PackedStringArray()
+	for i in range(1, ranked.size()):
+		if extras.size() >= 3:
+			break
+		extras.append(str(ranked[i]["name"]))
+	if extras.is_empty():
+		return "%s为主" % majority
+	return "%s为主，可见%s" % [majority, "、".join(extras)]
+
+
+func _snapshot_walk_sight() -> void:
+	_walk_sight_ids.clear()
+	_walk_vitals_nudge_done = false
+	if _comm == null:
+		return
+	for p in _comm.players_in_sight(self):
+		_walk_sight_ids[str(p.agent_id)] = true
+
+
+func walk_new_sight_living() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	if _comm == null:
+		return out
+	for p in _comm.players_in_sight(self):
+		var id: String = str(p.agent_id)
+		if not _walk_sight_ids.has(id):
+			out.append(id)
+	return out
+
+
+func walk_vitals_nudge_done() -> bool:
+	return _walk_vitals_nudge_done
+
+
+func mark_walk_vitals_nudge() -> void:
+	_walk_vitals_nudge_done = true
 
 
 func _tile_name(t: int) -> String:

@@ -12,7 +12,7 @@ static func build_messages(
 	status: String,
 	memory_lines: PackedStringArray = [],
 	perception_agent_ids: PackedStringArray = [],
-	audio_agent_ids: PackedStringArray = [],
+	sight_agent_ids: PackedStringArray = [],
 	observe_agent_ids: PackedStringArray = [],
 	ground_item_ids: PackedStringArray = [],
 	heard_lines: PackedStringArray = [],
@@ -40,7 +40,7 @@ Eating food restores satiety and a little energy — food is not a substitute fo
 Hungry sleep restores less energy. Skipping nights shrinks your energy ceiling; skipping food shrinks your satiety ceiling. Ceilings recover only after consecutive good nights / days of eating.
 Health is settled at dawn from consecutive missed night sleep and days without food. Health 0 is irreversible death. There is no suicide primitive. Low health makes you frailer (faster energy drain, worse sleep restore, slower walk) but does not force any action.
 You have an immutable goal to stay alive.
-USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby living agent to feed them.
+USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby living agent to feed them. Non-food items cannot change the island yet — drop them if you must.
 You may carry at most a few food items; drop or eat before picking more.
 PICK_UP of food gathers every matching food item currently in sight, until the food bag is full. Use item all_food to gather every visible food type at once.
 MOVE_TO may target any walkable tile, not only listed ones. Frontier tiles are walkable cells at the edge of land you have already explored.
@@ -65,12 +65,16 @@ Respond ONLY via tool/function call — no free-form answer."""
 		user_parts.append(
 			"=== Failed MOVE_TO tiles (do NOT retry) ===\n%s" % "\n".join(blocked_move_lines)
 		)
-	if audio_agent_ids.size() > 0:
-		user_parts.append("=== Agents in sight (SAY/GIVE/SHARE_MAP) ===\n%s" % ", ".join(audio_agent_ids))
+	if sight_agent_ids.size() > 0:
+		user_parts.append("=== Agents in sight (SAY/GIVE/SHARE_MAP) ===\n%s" % ", ".join(sight_agent_ids))
 	else:
 		user_parts.append("=== Agents in sight ===\n(none living — SAY/GIVE/SHARE_MAP unavailable)")
-	if perception_agent_ids.size() > 0 and audio_agent_ids.size() == 0:
-		user_parts.append("=== Visible corpses ===\n%s" % ", ".join(perception_agent_ids))
+	var corpse_ids: PackedStringArray = PackedStringArray()
+	for pid in perception_agent_ids:
+		if not sight_agent_ids.has(pid):
+			corpse_ids.append(pid)
+	if corpse_ids.size() > 0:
+		user_parts.append("=== Visible corpses ===\n%s" % ", ".join(corpse_ids))
 	if observe_agent_ids.size() > 0:
 		user_parts.append("=== OBSERVE legal agent ids ===\n%s" % ", ".join(observe_agent_ids))
 	if ground_item_ids.size() > 0:
@@ -99,7 +103,7 @@ Respond ONLY via tool/function call — no free-form answer."""
 
 
 static func tool_definitions_for_context(
-	audio_agent_ids: PackedStringArray,
+	sight_agent_ids: PackedStringArray,
 	perception_agent_ids: PackedStringArray,
 	ground_item_ids: PackedStringArray,
 	pickup_item_ids: PackedStringArray,
@@ -115,9 +119,9 @@ static func tool_definitions_for_context(
 		},
 		["x", "y"],
 	))
-	if audio_agent_ids.size() > 0:
+	if sight_agent_ids.size() > 0:
 		var say_to: Array = ["broadcast"]
-		for id in audio_agent_ids:
+		for id in sight_agent_ids:
 			say_to.append(id)
 		tools.append(_fn(
 			AgentActions.KIND_SAY,
@@ -164,36 +168,42 @@ static func tool_definitions_for_context(
 			{"item": {"type": "string", "enum": inv_enum}},
 			["item"],
 		))
-		var use_on: Array = ["self"]
-		for id in perception_agent_ids:
-			use_on.append(id)
-		for id in ground_item_ids:
-			use_on.append(id)
-		tools.append(_fn(
-			AgentActions.KIND_USE,
-			"Use an inventory item. Food restores satiety and a little energy (on self or a nearby agent).",
-			{
-				"item": {"type": "string", "enum": inv_enum},
-				"on": {"type": "string", "enum": use_on},
-			},
-			["item", "on"],
-		))
-		if audio_agent_ids.size() > 0:
+		var usable: PackedStringArray = PackedStringArray()
+		for raw in inventory:
+			var iid: String = str(raw).strip_edges()
+			if iid.is_empty() or iid in usable:
+				continue
+			if Config.item_is_usable(iid):
+				usable.append(iid)
+		if usable.size() > 0:
+			var use_on: Array = ["self"]
+			for id in sight_agent_ids:
+				use_on.append(id)
+			tools.append(_fn(
+				AgentActions.KIND_USE,
+				"Eat food on self, or feed a living agent in sight. Non-food items cannot be used yet.",
+				{
+					"item": {"type": "string", "enum": _array_from_packed(usable)},
+					"on": {"type": "string", "enum": use_on},
+				},
+				["item", "on"],
+			))
+		if sight_agent_ids.size() > 0:
 			tools.append(_fn(
 				AgentActions.KIND_GIVE,
 				"Give inventory item to a living agent currently in sight",
 				{
 					"item": {"type": "string", "enum": inv_enum},
-					"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
+					"to": {"type": "string", "enum": _array_from_packed(sight_agent_ids)},
 				},
 				["item", "to"],
 			))
-	if audio_agent_ids.size() > 0:
+	if sight_agent_ids.size() > 0:
 		tools.append(_fn(
 			AgentActions.KIND_SHARE_MAP,
 			"Offer to share your explored map with an agent in sight (mutual SHARE_MAP merges gray areas)",
 			{
-				"to": {"type": "string", "enum": _array_from_packed(audio_agent_ids)},
+				"to": {"type": "string", "enum": _array_from_packed(sight_agent_ids)},
 			},
 			["to"],
 		))

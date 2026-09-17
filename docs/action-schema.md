@@ -36,4 +36,5 @@ class Action:
 ## 当前状态
 
 - 已实现：`MOVE_TO` `SAY` `EMOTE` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`
-- `USE` 食物（`food: true`）回复饱腹和少量精力；食物背包有上限；连续熬夜/断食会压低上限
+- `USE` 食物（`food: true`）回复饱腹和少量精力；非食物不能改变地形，USE 失败
+- 走路中 `MOVE_TO` 不打断当前路径；`USE` / `PICK_UP` / `SLEEP` / `SAY` 才会停下

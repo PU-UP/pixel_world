@@ -156,13 +156,13 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 		KIND_SAY:
 			var to_s: String = str(params.get("to", "")).strip_edges()
 			if to_s == "broadcast":
-				if ctx.get("audio_agent_ids", []).is_empty():
+				if ctx.get("sight_agent_ids", []).is_empty():
 					return {"ok": false, "error": "no one in sight", "hint": ""}
 				return {"ok": true, "error": "", "hint": ""}
 			if _looks_like_tick_id(to_s):
 				return {"ok": false, "error": "unknown agent: %s" % to_s, "hint": ""}
-			var audio_ids: Array = ctx.get("audio_agent_ids", [])
-			if _contains_id(audio_ids, to_s):
+			var sight_ids: Array = ctx.get("sight_agent_ids", [])
+			if _contains_id(sight_ids, to_s):
 				return {"ok": true, "error": "", "hint": ""}
 			var all_ids: Array = ctx.get("all_agent_ids", [])
 			if _contains_id(all_ids, to_s):
@@ -274,8 +274,8 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var item_g: String = str(params.get("item", "")).strip_edges()
 			if _looks_like_tick_id(to_give):
 				return {"ok": false, "error": "unknown agent: %s" % to_give, "hint": ""}
-			var audio_g: Array = ctx.get("audio_agent_ids", [])
-			if _contains_id(audio_g, to_give):
+			var sight_g: Array = ctx.get("sight_agent_ids", [])
+			if _contains_id(sight_g, to_give):
 				var inv: Array = ctx.get("inventory", [])
 				if not _contains_id(inv, item_g):
 					return {"ok": false, "error": "not carrying item: %s" % item_g, "hint": ""}
@@ -296,8 +296,8 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var to_share: String = str(params.get("to", "")).strip_edges()
 			if _looks_like_tick_id(to_share):
 				return {"ok": false, "error": "unknown agent: %s" % to_share, "hint": ""}
-			var audio_s: Array = ctx.get("audio_agent_ids", [])
-			if _contains_id(audio_s, to_share):
+			var sight_s: Array = ctx.get("sight_agent_ids", [])
+			if _contains_id(sight_s, to_share):
 				return {"ok": true, "error": "", "hint": ""}
 			var all_s: Array = ctx.get("all_agent_ids", [])
 			if _contains_id(all_s, to_share):
@@ -313,6 +313,8 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var need_item: String = str(params.get("item", "")).strip_edges()
 			if not _contains_id(inv_d, need_item):
 				return {"ok": false, "error": "not carrying item: %s" % need_item, "hint": ""}
+			if kind == KIND_USE and not Config.item_is_usable(need_item):
+				return {"ok": false, "error": Config.item_unusable_reason(need_item), "hint": ""}
 			return {"ok": true, "error": "", "hint": ""}
 		_:
 			return {"ok": true, "error": "", "hint": ""}
@@ -320,7 +322,7 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 
 static func build_context(player: Player, comm, world) -> Dictionary:
 	var perception_ids: PackedStringArray = PackedStringArray()
-	var audio_ids: PackedStringArray = PackedStringArray()
+	var sight_ids: PackedStringArray = PackedStringArray()
 	var ground_item_ids: PackedStringArray = PackedStringArray()
 	var pickup_item_ids: PackedStringArray = PackedStringArray()
 	var agent_tile: Vector2i = player.get_tile_position()
@@ -328,8 +330,8 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 	if comm != null:
 		for p in comm.players_in_perception(player):
 			perception_ids.append(str(p.agent_id))
-		for p in comm.players_in_audio(player):
-			audio_ids.append(str(p.agent_id))
+		for p in comm.players_in_sight(player):
+			sight_ids.append(str(p.agent_id))
 		for p in comm.all_players():
 			if p != player:
 				all_agent_ids.append(str(p.agent_id))
@@ -365,7 +367,7 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 				food_full_agent_ids.append(str(p.agent_id))
 	return {
 		"perception_agent_ids": perception_ids,
-		"audio_agent_ids": audio_ids,
+		"sight_agent_ids": sight_ids,
 		"all_agent_ids": all_agent_ids,
 		"ground_item_ids": ground_item_ids,
 		"pickup_item_ids": pickup_item_ids,
@@ -607,3 +609,16 @@ static func format_action(action: Dictionary) -> String:
 	if not action.has("kind"):
 		return "(invalid action: no kind)"
 	return "[%s] %s" % [action["kind"], str(action.get("params", {}))]
+
+
+static func interrupts_walk(kind: String) -> bool:
+	return kind in [
+		KIND_SAY,
+		KIND_USE,
+		KIND_PICK_UP,
+		KIND_SLEEP,
+		KIND_GIVE,
+		KIND_SHARE_MAP,
+		KIND_OBSERVE,
+		KIND_DROP,
+	]

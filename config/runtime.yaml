@@ -103,10 +103,19 @@ vitals:
 
 decision:
   skip_while_walking: false
+  interrupt_walk_when:
+    pending_reply: true
+    vitals_urgent: true
+    new_sight_living: true
   repeat_say_block_ticks: 40
   min_ticks_between: 2
   max_say_chars: 180
   wait_max_ticks: 20
+
+observation:
+  landmark_max: 2
+  landmark_max_dist: 28
+  frontier_max: 1
 
 exploration:
   share_consensus_ticks: 60
@@ -140,6 +149,8 @@ memory:
     collapse_same_tick:
       - plan
       - reflection
+    always_include_reflections: 2
+    social_boost: 0.25
     exclude_categories:
       - observation
       - decision

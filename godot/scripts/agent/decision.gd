@@ -91,9 +91,11 @@ func _on_tick(_tick_index: int) -> void:
 		return
 	if _player.is_dead():
 		return
-	if _player.is_sleeping() or _player.is_waiting():
+	if _player.is_sleeping():
 		return
-	if Config.decision_skip_while_walking() and _player.is_walking():
+	if _player.is_waiting() and not _player.can_relieve_vitals_in_place():
+		return
+	if _player.is_walking() and not _should_redecide_while_walking():
 		return
 	var min_gap: int = Config.decision_min_ticks_between()
 	if min_gap > 0 and _clock.current_tick() - _last_decision_tick < min_gap:
@@ -105,6 +107,8 @@ func _on_tick(_tick_index: int) -> void:
 
 
 func _request_decision() -> void:
+	if _player.is_walking() and _player.can_relieve_vitals_in_place():
+		_player.mark_walk_vitals_nudge()
 	var tick := _clock.current_tick()
 	var obs := _player.get_observation_for_llm()
 	var guard: Dictionary = LlmGuard.sanitize_observation(obs)
@@ -127,7 +131,7 @@ func _request_decision() -> void:
 		var tile: Vector2i = ft
 		frontier_lines.append("(%d,%d)" % [tile.x, tile.y])
 	var ctx: Dictionary = AgentActions.build_context(_player, _comm, world)
-	var social_ids := _audio_agent_ids()
+	var social_ids := _sight_agent_ids()
 	var tools: Array = DecisionPrompt.tool_definitions_for_context(
 		social_ids,
 		_perception_agent_ids(),
@@ -223,7 +227,7 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 				_mark_bad_move_tile(fail_goal)
 		_record_outcome(tick, action, result)
 		if result.get("ok", false) and _planning:
-			_planning.advance_step()
+			_planning.advance_if_matches(action)
 	else:
 		_last_action = {}
 		_last_error = parsed["error"]
@@ -328,15 +332,28 @@ func _record_outcome(tick: int, action: Dictionary, result: Dictionary) -> void:
 	if action.is_empty():
 		return
 	var line := _format_action(action)
+	var kind: String = str(action.get("kind", ""))
+	var social := 0.0
+	var emotional := 0.0
+	if kind in [AgentActions.KIND_SAY, AgentActions.KIND_GIVE, AgentActions.KIND_SHARE_MAP]:
+		social = 0.7
+	elif kind == AgentActions.KIND_EMOTE:
+		social = 0.35
+	elif kind == AgentActions.KIND_USE:
+		var on_target: String = str(action.get("params", {}).get("on", "")).strip_edges()
+		if not on_target.is_empty() and on_target != "self" and on_target != str(_player.agent_id):
+			social = 0.6
+	if not result.get("ok", false):
+		emotional = 0.15
 	if result.get("ok", false):
-		_memory.append_event("action", "ok %s" % line, tick, 0.0, 0.0, 0.35)
+		_memory.append_event("action", "ok %s" % line, tick, emotional, social, 0.35)
 	else:
 		_memory.append_event(
 			"action_failed",
 			"%s → %s" % [line, str(result.get("error", "?"))],
 			tick,
-			0.15,
-			0.0,
+			emotional,
+			social,
 			0.2,
 		)
 
@@ -371,13 +388,11 @@ func _perception_agent_ids() -> PackedStringArray:
 	return ids
 
 
-func _audio_agent_ids() -> PackedStringArray:
+func _sight_agent_ids() -> PackedStringArray:
 	var ids: PackedStringArray = []
 	if _comm == null or _player == null:
 		return ids
-	for p in _comm.players_in_audio(_player):
-		if p.is_dead():
-			continue
+	for p in _comm.players_in_sight(_player):
 		ids.append(str(p.agent_id))
 	return ids
 
@@ -395,6 +410,25 @@ func _ground_item_ids() -> PackedStringArray:
 		if not iid.is_empty() and not iid in ids:
 			ids.append(iid)
 	return ids
+
+
+func _should_redecide_while_walking() -> bool:
+	if not _player.is_walking():
+		return true
+	if Config.decision_skip_while_walking():
+		return false
+	var cfg: Dictionary = Config.decision_interrupt_walk_cfg()
+	if bool(cfg.get("pending_reply", true)):
+		var pending_from: String = _player.get_pending_reply_from().strip_edges()
+		if not pending_from.is_empty() and _id_in_packed(_sight_agent_ids(), pending_from):
+			return true
+	if bool(cfg.get("vitals_urgent", true)) and _player.can_relieve_vitals_in_place():
+		if not _player.walk_vitals_nudge_done():
+			return true
+	if bool(cfg.get("new_sight_living", true)):
+		if _player.walk_new_sight_living().size() > 0:
+			return true
+	return false
 
 
 func _id_in_packed(ids: PackedStringArray, id: String) -> bool:

@@ -66,6 +66,11 @@ func decision_skip_while_walking() -> bool:
 	return bool(runtime.get("decision", {}).get("skip_while_walking", false))
 
 
+func decision_interrupt_walk_cfg() -> Dictionary:
+	var raw: Variant = decision_cfg().get("interrupt_walk_when", {})
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
+
+
 func decision_cfg() -> Dictionary:
 	return runtime.get("decision", {})
 
@@ -211,7 +216,7 @@ func vitals_starting_food() -> PackedStringArray:
 
 func is_food_gather_token(item_id: String) -> bool:
 	var key: String = item_id.strip_edges().to_lower()
-	return key in ["all_food", "all", "food", "nearby_food"]
+	return key in ["all_food", "all", "food", "nearby_food", "全部", "食物", "野果"]
 
 
 func vitals_bar_energy() -> bool:
@@ -264,6 +269,17 @@ func item_def(item_id: String) -> Dictionary:
 
 func item_is_food(item_id: String) -> bool:
 	return bool(item_def(item_id).get("food", false))
+
+
+func item_is_usable(item_id: String) -> bool:
+	return item_is_food(item_id)
+
+
+func item_unusable_reason(item_id: String) -> String:
+	var name_s: String = str(item_def(item_id).get("display_name", item_id)).strip_edges()
+	if name_s.is_empty():
+		name_s = item_id
+	return "这块岛上还不能用%s改变地形或制造工具" % name_s
 
 
 func food_count_in(inventory: Array) -> int:
@@ -340,6 +356,22 @@ func exploration_dwell_hint_ticks() -> int:
 
 func exploration_dwell_radius() -> int:
 	return maxi(0, int(exploration_cfg().get("dwell_radius", 2)))
+
+
+func observation_cfg() -> Dictionary:
+	return runtime.get("observation", {})
+
+
+func observation_landmark_max() -> int:
+	return maxi(0, int(observation_cfg().get("landmark_max", 2)))
+
+
+func observation_landmark_max_dist() -> int:
+	return maxi(1, int(observation_cfg().get("landmark_max_dist", 28)))
+
+
+func observation_frontier_max() -> int:
+	return maxi(0, int(observation_cfg().get("frontier_max", 1)))
 
 
 func world_item_defs() -> Dictionary:

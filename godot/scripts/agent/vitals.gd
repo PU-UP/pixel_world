@@ -245,19 +245,23 @@ func _settle_new_day(day_index: int) -> void:
 
 func _settle_health() -> void:
 	var hcfg: Dictionary = _health_cfg()
+	var missed_sleep: bool = nights_without_sleep > 0
+	var missed_food: bool = days_without_food > 0
 	var delta: float = 0.0
-	if nights_without_sleep > 0:
+	if missed_sleep and missed_food:
 		delta -= float(hcfg.get("miss_sleep", 5))
 		delta -= float(hcfg.get("extra_sleep", 4)) * float(nights_without_sleep - 1)
-	if days_without_food > 0:
 		delta -= float(hcfg.get("miss_food", 6))
 		delta -= float(hcfg.get("extra_food", 4)) * float(days_without_food - 1)
-	if nights_without_sleep > 0 and days_without_food > 0:
 		delta -= float(hcfg.get("both_extra", 3))
-	if nights_without_sleep == 0 and days_without_food == 0:
+	elif missed_sleep:
+		delta -= float(hcfg.get("miss_sleep", 5))
+		delta -= float(hcfg.get("extra_sleep", 4)) * float(nights_without_sleep - 1)
+	elif missed_food:
+		delta -= float(hcfg.get("miss_food", 6))
+		delta -= float(hcfg.get("extra_food", 4)) * float(days_without_food - 1)
+	else:
 		delta += float(hcfg.get("recover_both", 7))
-	elif nights_without_sleep == 0 or days_without_food == 0:
-		delta += float(hcfg.get("recover_one", 2))
 	health = clampf(health + delta, 0.0, _health_max())
 
 

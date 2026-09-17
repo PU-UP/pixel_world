@@ -17,6 +17,7 @@ var _llm: LlmClientScript = null
 var _persona: PersonaScript = null
 var _agent_id: String = ""
 var _logger = null
+var _goals = null
 
 var _busy: bool = false
 var _last_reflection: String = ""
@@ -32,6 +33,7 @@ func setup(
 	persona: PersonaScript,
 	agent_id: String = "",
 	player = null,
+	goals = null,
 ) -> void:
 	_memory = memory
 	_clock = clock
@@ -39,6 +41,7 @@ func setup(
 	_persona = persona
 	_agent_id = agent_id if not agent_id.is_empty() else str(persona.agent_id)
 	_player = player
+	_goals = goals
 	_llm.completed.connect(_on_llm_completed)
 	_llm.failed.connect(_on_llm_failed)
 	if not _clock.tick.is_connected(_on_tick):
@@ -112,6 +115,7 @@ func _on_llm_completed(_request_id: int, body: Dictionary, meta: Dictionary) -> 
 	_memory.append_event("reflection", text, int(meta.get("tick", _clock.current_tick())), 0.6, 0.0, 0.5)
 	_memory.reset_event_count()
 	_ticks_since_reflection = 0
+	_apply_reflected_goal(text)
 	var social_n := _count_social_memories()
 	_persona.apply_reflection_drift(social_n)
 	if _logger != null:
@@ -144,3 +148,20 @@ func _count_social_memories() -> int:
 			if "SAY" in txt or "say" in txt or "heard" in txt:
 				n += 1
 	return n
+
+
+func _apply_reflected_goal(text: String) -> void:
+	if _goals == null:
+		return
+	var goal: String = ""
+	for line in text.split("\n"):
+		var s: String = line.strip_edges()
+		var low: String = s.to_lower()
+		if low.begins_with("current_goal:") or s.begins_with("当前目标:"):
+			goal = s.substr(s.find(":") + 1).strip_edges()
+			break
+	if goal.is_empty():
+		return
+	if goal.length() > 40:
+		goal = goal.substr(0, 40)
+	_goals.set_current(goal)

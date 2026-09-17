@@ -102,11 +102,35 @@ func retrieve(query: String, k: int, current_tick: int, cfg: Dictionary) -> Arra
 		var sim := _similarity(query, mem as Dictionary)
 		var imp := float(mem.get("importance", 0.1))
 		var score := w_sim * sim + w_rec * recency + w_imp * imp
+		var social_boost: float = float(cfg.get("social_boost", 0.0))
+		if social_boost > 0.0:
+			score += social_boost * clampf(float(mem.get("social_relevance", 0.0)), 0.0, 1.0)
+			var txt: String = str(mem.get("text", ""))
+			if _looks_conversational(query, txt, cat):
+				score += social_boost * 0.5
 		ranked.append({"mem": mem, "score": score})
 	ranked.sort_custom(func(a, b): return a["score"] > b["score"])
 	var out: Array = []
-	for i in mini(k, ranked.size()):
-		out.append(ranked[i]["mem"])
+	var seen: Dictionary = {}
+	var pin_n: int = maxi(0, int(cfg.get("always_include_reflections", 0)))
+	if pin_n > 0:
+		for mem in get_by_category("reflection", pin_n):
+			if out.size() >= k:
+				break
+			var mid: int = int(mem.get("id", 0))
+			if seen.has(mid):
+				continue
+			seen[mid] = true
+			out.append(mem)
+	for i in ranked.size():
+		if out.size() >= k:
+			break
+		var mem: Dictionary = ranked[i]["mem"]
+		var mid: int = int(mem.get("id", 0))
+		if seen.has(mid):
+			continue
+		seen[mid] = true
+		out.append(mem)
 	return out
 
 
@@ -125,6 +149,16 @@ func _latest_id_by_tick_category(categories: Array) -> Dictionary:
 
 func _tick_category_key(tick: int, category: String) -> String:
 	return "%d|%s" % [tick, category]
+
+
+func _looks_conversational(_query: String, text: String, category: String) -> bool:
+	if category in ["social", "injury"]:
+		return true
+	var blob: String = text.to_lower()
+	for token in ["say", "give", "说", "对话", "招呼", "喂", "给予"]:
+		if blob.find(token) >= 0:
+			return true
+	return false
 
 
 func apply_decay(current_tick: int, cfg: Dictionary) -> void:
