@@ -53,6 +53,10 @@ var _frontier_cache_tick: int = -999
 var _frontier_cache: Array = []
 var _walk_sight_ids: Dictionary = {}
 var _walk_vitals_nudge_done: bool = false
+var _follow_id: String = ""
+var _follow_until_tick: int = 0
+var _follow_internal: bool = false
+var _relationships = null
 var inventory: Array = []
 var vitals: AgentVitals = AgentVitals.new()
 var exploration: ExplorationMap = ExplorationMap.new()
@@ -70,6 +74,9 @@ const _ACTION_KIND_ZH: Dictionary = {
 	"wait": "等待",
 	"sleep": "睡觉",
 	"emote": "表情",
+	"mark": "铭刻",
+	"follow": "跟随",
+	"meet": "约定",
 	"received": "收到",
 	"heard": "听到",
 	"die": "死亡",
@@ -129,13 +136,22 @@ func apply_agent_config(cfg: Dictionary) -> void:
 		display_name = str(cfg["display_name"])
 	if cfg.has("spawn_tile"):
 		_pending_spawn = cfg["spawn_tile"]
-	seed_starting_inventory()
+	var extra: Array = []
+	if cfg.has("starting_items") and typeof(cfg["starting_items"]) == TYPE_ARRAY:
+		extra = cfg["starting_items"]
+	seed_starting_inventory(extra)
 
 
-func seed_starting_inventory() -> void:
+func seed_starting_inventory(extra: Array = []) -> void:
 	if not inventory.is_empty():
 		return
 	for item_id in Config.vitals_starting_food():
+		if Config.can_carry_item(inventory, item_id):
+			inventory.append(item_id)
+	for raw in extra:
+		var item_id: String = str(raw).strip_edges()
+		if item_id.is_empty():
+			continue
 		if Config.can_carry_item(inventory, item_id):
 			inventory.append(item_id)
 
@@ -278,8 +294,98 @@ func bind_comm(comm) -> void:
 	_comm = comm
 
 
+func bind_relationships(rel) -> void:
+	_relationships = rel
+
+
 func bind_observability(logger) -> void:
 	_obs_logger = logger
+
+
+func is_following() -> bool:
+	return not _follow_id.strip_edges().is_empty()
+
+
+func following_id() -> String:
+	return _follow_id
+
+
+func clear_follow() -> void:
+	_follow_id = ""
+	_follow_until_tick = 0
+	_follow_internal = false
+
+
+func near_campfire() -> bool:
+	if _world == null or _world.state == null:
+		return false
+	return _world.state.is_near_campfire(get_tile_position())
+
+
+func _storm_energy_scale() -> float:
+	if _world == null or _world.events == null:
+		return 1.0
+	return _world.events.storm_energy_scale_at(get_tile_position())
+
+
+func refuses_gift_from(giver_id: String) -> bool:
+	if _relationships == null:
+		return false
+	var cfg: Dictionary = Config.relationships_cfg()
+	var e: Dictionary = _relationships.get_edge(giver_id)
+	var fam_min: float = float(cfg.get("give_refuse_familiarity", 0.35))
+	var aff_max: float = float(cfg.get("give_refuse_affinity_below", 0.12))
+	return float(e.get("familiarity", 0.0)) >= fam_min and float(e.get("affinity", 0.0)) < aff_max
+
+
+func receive_meet(from_id: String, tile: Vector2i, until_tick: int, tick: int) -> void:
+	if is_dead():
+		return
+	_log_action(tick, "meet", "%s 约在 (%d,%d) 至 t%d" % [from_id, tile.x, tile.y, until_tick])
+
+
+func _retarget_follow() -> bool:
+	if not is_following() or is_dead() or is_sleeping():
+		return false
+	var tick: int = current_tick()
+	if _follow_until_tick > 0 and tick >= _follow_until_tick:
+		clear_follow()
+		return false
+	if _comm == null:
+		clear_follow()
+		return false
+	var other: Player = _comm.find_player(_follow_id)
+	if other == null or other.is_dead():
+		clear_follow()
+		return false
+	var in_sight := false
+	for seen in _comm.players_in_sight(self):
+		if seen == other:
+			in_sight = true
+			break
+	if not in_sight:
+		clear_follow()
+		return false
+	if is_walking() or is_waiting():
+		return true
+	var occupied: Array = []
+	for p in _comm.all_players():
+		if p == self:
+			continue
+		occupied.append("%d,%d" % [p.get_tile_position().x, p.get_tile_position().y])
+	var meet: Dictionary = AgentActions.resolve_meeting_tile(
+		_world, get_tile_position(), other.get_tile_position(), occupied
+	)
+	if not meet.get("ok", false):
+		return false
+	var dest: Vector2i = meet.get("tile", get_tile_position())
+	if dest == get_tile_position():
+		_snapshot_walk_sight()
+		return false
+	_follow_internal = true
+	enqueue_action(AgentActions.make_move_to(dest.x, dest.y))
+	_follow_internal = false
+	return true
 
 
 func _interrupt_walk() -> void:
@@ -313,15 +419,22 @@ func busy_state() -> String:
 	if _state == State.WAITING:
 		return "waiting"
 	if _state == State.WALKING:
+		if is_following():
+			return "follow %s" % _follow_id
 		return "walking"
+	if is_following():
+		return "follow %s" % _follow_id
 	return "idle"
 
 
 func perception_radius() -> int:
 	var base: int = observation_radius_tiles
-	if _clock == null or not _clock.time_enabled() or not _clock.is_night():
-		return base
-	return maxi(2, int(round(float(base) * Config.time_night_perception_scale())))
+	var r: int = base
+	if _clock != null and _clock.time_enabled() and _clock.is_night():
+		r = maxi(2, int(round(float(base) * Config.time_night_perception_scale())))
+		if near_campfire():
+			r += Config.traces_campfire_vision_bonus()
+	return r
 
 # ------------------------------------------------------------------
 # 公开接口 — 外部(LLM / 鼠标 / 键盘)灌入 action
@@ -343,6 +456,9 @@ func enqueue_action(action: Dictionary) -> void:
 		_log_obs_action(action["kind"], action.get("params", {}), false, "unimplemented", action["kind"])
 		printerr("[Player] kind not implemented in P2: ", action["kind"])
 		return
+	if is_following() and not _follow_internal:
+		if str(action.get("kind", "")) != AgentActions.KIND_FOLLOW:
+			clear_follow()
 	_action_queue.append(action)
 	_log_action(_clock.current_tick() if _clock else -1, "enqueue", AgentActions.format_action(action))
 	if _state == State.WALKING and not AgentActions.interrupts_walk(str(action.get("kind", ""))):
@@ -380,6 +496,7 @@ func clear_action_queue() -> void:
 	_state = State.IDLE
 	modulate = Color.WHITE
 	_current_action = {}
+	clear_follow()
 
 # ------------------------------------------------------------------
 # 主循环
@@ -424,6 +541,8 @@ func _draw() -> void:
 		draw_circle(Vector2(16, -16), 2.8, Color(0.85, 0.9, 1.0, 0.95))
 	if not _emote_text.is_empty():
 		_draw_emote_bubble()
+	if is_following():
+		draw_circle(Vector2(0, 8), 2.0, Color(0.35, 0.82, 0.95, 0.95))
 	if not debug_show_path:
 		return
 	if _current_path.is_empty():
@@ -474,6 +593,12 @@ func _pump_next_action() -> void:
 			_execute_wait(_current_action)
 		AgentActions.KIND_SLEEP:
 			_execute_sleep(_current_action)
+		AgentActions.KIND_MARK:
+			_execute_mark(_current_action)
+		AgentActions.KIND_FOLLOW:
+			_execute_follow(_current_action)
+		AgentActions.KIND_MEET:
+			_execute_meet(_current_action)
 		_:
 			# 未知 kind(不应到这,validate 已过滤)
 			_state = State.IDLE
@@ -776,10 +901,37 @@ func _execute_use(action: Dictionary) -> void:
 			_log_obs_action(AgentActions.KIND_USE, p, false, "target dead", on_target)
 			_pump_next_action()
 			return
-		if not Config.item_is_usable(item_id):
-			var reason: String = Config.item_unusable_reason(item_id)
+		if not Config.item_is_usable(item_id, inventory):
+			var reason: String = Config.item_unusable_reason(item_id, inventory)
 			_log_action(tick, "use", "FAILED %s" % reason)
 			_log_obs_action(AgentActions.KIND_USE, p, false, reason, item_id)
+			_pump_next_action()
+			return
+		if Config.item_can_craft_campfire(item_id, inventory):
+			if on_target not in ["self", "", str(agent_id)]:
+				_log_action(tick, "use", "FAILED campfire only at own tile")
+				_log_obs_action(AgentActions.KIND_USE, p, false, "campfire only at own tile")
+				_pump_next_action()
+				return
+			var partner: String = Config.item_craft_partner(item_id)
+			inventory.erase(item_id)
+			inventory.erase(partner)
+			var fire: Dictionary = {"ok": false, "error": "no world"}
+			if _world != null and _world.state != null:
+				fire = _world.state.light_campfire(get_tile_position(), str(agent_id), tick)
+			if fire.get("ok", false):
+				text = "生起篝火（用了%s和%s）" % [
+					str(def.get("display_name", item_id)),
+					str(Config.item_def(partner).get("display_name", partner)),
+				]
+				_log_action(tick, "use", text)
+				_log_obs_action(AgentActions.KIND_USE, p, true, text)
+			else:
+				inventory.append(item_id)
+				inventory.append(partner)
+				var err_f: String = str(fire.get("error", "?"))
+				_log_action(tick, "use", "FAILED %s" % err_f)
+				_log_obs_action(AgentActions.KIND_USE, p, false, err_f, err_f)
 			_pump_next_action()
 			return
 		if Config.item_is_food(item_id) and fed != null and fed.vitals.enabled():
@@ -881,6 +1033,92 @@ func _execute_sleep(action: Dictionary) -> void:
 	_log_obs_action(AgentActions.KIND_SLEEP, action.get("params", {}), true, "until t%d" % until_tick)
 
 
+func _execute_mark(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var tick: int = _clock.current_tick() if _clock else -1
+	var tile := Vector2i(int(p.get("x", 0)), int(p.get("y", 0)))
+	var label: String = str(p.get("label", "")).strip_edges()
+	if _world == null or _world.state == null:
+		_log_action(tick, "mark", "FAILED no world state")
+		_log_obs_action(AgentActions.KIND_MARK, p, false, "no world state")
+		_pump_next_action()
+		return
+	var res: Dictionary = _world.state.place_mark(tile, label, str(agent_id), tick)
+	if res.get("ok", false):
+		var detail: String = "「%s」@(%d,%d)" % [str(res.get("label", label)), tile.x, tile.y]
+		_log_action(tick, "mark", detail)
+		_log_obs_action(AgentActions.KIND_MARK, p, true, detail)
+	else:
+		var err: String = str(res.get("error", "?"))
+		_log_action(tick, "mark", "FAILED %s" % err)
+		_log_obs_action(AgentActions.KIND_MARK, p, false, err, err)
+	_pump_next_action()
+
+
+func _execute_follow(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var to_id: String = str(p.get("to", "")).strip_edges()
+	var tick: int = _clock.current_tick() if _clock else -1
+	if _comm == null:
+		_log_action(tick, "follow", "FAILED no comm router")
+		_log_obs_action(AgentActions.KIND_FOLLOW, p, false, "no comm router")
+		_pump_next_action()
+		return
+	var other: Player = _comm.find_player(to_id)
+	if other == null or other.is_dead():
+		_log_action(tick, "follow", "FAILED unknown/dead %s" % to_id)
+		_log_obs_action(AgentActions.KIND_FOLLOW, p, false, "unknown/dead", to_id)
+		_pump_next_action()
+		return
+	var in_sight := false
+	for seen in _comm.players_in_sight(self):
+		if seen == other:
+			in_sight = true
+			break
+	if not in_sight:
+		_log_action(tick, "follow", "FAILED not in sight %s" % to_id)
+		_log_obs_action(AgentActions.KIND_FOLLOW, p, false, "not in sight", to_id)
+		_pump_next_action()
+		return
+	_follow_id = to_id
+	_follow_until_tick = tick + Config.traces_follow_max_ticks()
+	_snapshot_walk_sight()
+	_log_action(tick, "follow", "→ %s until t%d" % [to_id, _follow_until_tick])
+	_log_obs_action(AgentActions.KIND_FOLLOW, p, true, "→ %s" % to_id)
+	if not _retarget_follow():
+		_pump_next_action()
+
+
+func _execute_meet(action: Dictionary) -> void:
+	var p: Dictionary = action["params"]
+	var tick: int = _clock.current_tick() if _clock else -1
+	var tile := Vector2i(int(p.get("x", 0)), int(p.get("y", 0)))
+	var until_tick: int = int(p.get("until_tick", 0))
+	var to_id: String = str(p.get("to", "")).strip_edges()
+	if until_tick <= tick:
+		until_tick = tick + Config.traces_meet_default_ticks()
+	if _world == null or _world.state == null:
+		_log_action(tick, "meet", "FAILED no world state")
+		_log_obs_action(AgentActions.KIND_MEET, p, false, "no world state")
+		_pump_next_action()
+		return
+	var res: Dictionary = _world.state.add_meet(str(agent_id), tile, until_tick, to_id, tick)
+	if res.get("ok", false):
+		var who: String = to_id if not to_id.is_empty() else "大家"
+		var detail: String = "约 %s 于(%d,%d) 至 t%d" % [who, tile.x, tile.y, until_tick]
+		_log_action(tick, "meet", detail)
+		_log_obs_action(AgentActions.KIND_MEET, p, true, detail)
+		if _comm != null and not to_id.is_empty() and to_id != "broadcast":
+			var other: Player = _comm.find_player(to_id)
+			if other != null:
+				other.receive_meet(str(agent_id), tile, until_tick, tick)
+	else:
+		var err: String = str(res.get("error", "?"))
+		_log_action(tick, "meet", "FAILED %s" % err)
+		_log_obs_action(AgentActions.KIND_MEET, p, false, err, err)
+	_pump_next_action()
+
+
 func _enter_sleep(until_tick: int) -> void:
 	_sleep_until_tick = until_tick
 	_state = State.SLEEPING
@@ -907,6 +1145,7 @@ func _become_corpse(announce: bool) -> void:
 	_emote_text = ""
 	_emote_left = 0.0
 	_clear_pending_reply()
+	clear_follow()
 	_state = State.DEAD
 	vitals.health = 0.0
 	modulate = Color(0.34, 0.32, 0.32)
@@ -926,6 +1165,8 @@ func _become_corpse(announce: bool) -> void:
 func _on_clock_tick(_tick_index: int) -> void:
 	if is_dead():
 		return
+	if is_following() and _follow_until_tick > 0 and current_tick() >= _follow_until_tick:
+		clear_follow()
 	_tick_dwell()
 	if _clock != null:
 		var p: String = _clock.phase()
@@ -942,12 +1183,16 @@ func _on_clock_tick(_tick_index: int) -> void:
 		_clock.phase() if _clock != null else "day",
 		still_sleeping,
 		_state == State.WALKING,
+		near_campfire(),
+		_storm_energy_scale(),
 	)
 	if vitals.enabled():
 		queue_redraw()
 	if vitals.is_deceased():
 		_become_corpse(true)
 		return
+	if is_following() and _state == State.IDLE:
+		_retarget_follow()
 	if _state == State.WAITING:
 		_wait_remaining -= 1
 		if _wait_remaining > 0:
@@ -1122,6 +1367,8 @@ func get_recent_emote_lines(limit: int = 4) -> PackedStringArray:
 func _advance_along_path(delta: float) -> void:
 	if _current_path.is_empty() or _path_idx >= _current_path.size():
 		_state = State.IDLE
+		if is_following() and _retarget_follow():
+			return
 		_pump_next_action()
 		return
 	var target: Vector2 = _current_path[_path_idx]
@@ -1190,6 +1437,8 @@ func _refresh_observation_if_needed() -> void:
 				continue
 			if p.is_sleeping():
 				extra = " 入睡"
+			if p.is_following():
+				extra += " 跟随%s" % p.following_id()
 			if p.vitals.enabled():
 				if p.vitals.is_tired():
 					extra += " 疲惫"
@@ -1222,6 +1471,44 @@ func _refresh_observation_if_needed() -> void:
 				int(lm.get("dist", 0)),
 			])
 		lines.append("地标: %s" % " ".join(mark_bits))
+	if _world != null and _world.state != null:
+		var named: PackedStringArray = PackedStringArray()
+		for mark in _world.state.marks_in_sight(origin, r, _world):
+			var mt: Vector2i = mark.get("tile", Vector2i.ZERO)
+			named.append("「%s」@(%d,%d) by %s" % [
+				str(mark.get("label", "")),
+				mt.x,
+				mt.y,
+				str(mark.get("by", "")),
+			])
+		if named.size() > 0:
+			lines.append("铭刻: %s" % ", ".join(named))
+		var fires: PackedStringArray = PackedStringArray()
+		for fire in _world.state.all_campfires():
+			var ft: Vector2i = fire.get("tile", Vector2i.ZERO)
+			var dx: int = ft.x - origin.x
+			var dy: int = ft.y - origin.y
+			if dx * dx + dy * dy > r * r:
+				continue
+			if not _world.has_line_of_sight(origin, ft):
+				continue
+			fires.append("篝火@(%d,%d) %s生" % [ft.x, ft.y, str(fire.get("by", ""))])
+		if fires.size() > 0:
+			lines.append("篝火: %s" % ", ".join(fires))
+		var meets: PackedStringArray = PackedStringArray()
+		for meet in _world.state.active_meets():
+			var who: String = str(meet.get("to", ""))
+			if who.is_empty():
+				who = "大家"
+			meets.append("%s约%s于(%d,%d)至t%d" % [
+				str(meet.get("by", "")),
+				who,
+				int(meet.get("x", 0)),
+				int(meet.get("y", 0)),
+				int(meet.get("until_tick", 0)),
+			])
+		if meets.size() > 0:
+			lines.append("约定: %s" % ", ".join(meets))
 	if living_parts.size() > 0:
 		lines.append("活人: %s" % ", ".join(living_parts))
 	else:
@@ -1464,6 +1751,8 @@ func get_status_line() -> String:
 		state_zh = "等待"
 	elif _state == State.SLEEPING:
 		state_zh = "睡觉余%d" % maxi(0, _sleep_until_tick - current_tick())
+	if is_following():
+		state_zh += " 跟随%s" % _follow_id
 	var time_s := ""
 	if _clock != null and _clock.time_enabled():
 		time_s = "  %s" % _clock.format_phase_clock()

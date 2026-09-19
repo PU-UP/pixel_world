@@ -178,6 +178,7 @@ func _observer_rules_label() -> String:
 		parts.append("跟随迷雾")
 		if Config.exploration_stale_overlay():
 			parts.append("过时灰")
+	parts.append(Config.game_version_label())
 	parts.append("续局" if _continued else "新局")
 	if _clock != null and _clock.time_enabled():
 		parts.append(_clock.format_phase_clock())

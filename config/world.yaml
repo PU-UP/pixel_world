@@ -70,9 +70,10 @@ world:
 items:
   driftwood:
     display_name: "浮木"
-    description: "海滩上冲来的一块结实浮木。"
+    description: "海滩上冲来的一块结实浮木。和燧石一起可以生火。"
     color: [0.55, 0.40, 0.28]
-    use_text: "掂了掂浮木，轻巧但结实。"
+    craft_campfire_with: flint
+    use_text: "用浮木架起火堆。"
   seashell:
     display_name: "贝壳"
     description: "被海浪冲上岸的浅色贝壳。"
@@ -107,16 +108,25 @@ items:
     use_text: "吃了几颗海葡萄，嘴里发咸，解渴多过顶饱。"
   flint:
     display_name: "燧石"
-    description: "锋利的石头，可做工具。"
+    description: "锋利的石头。和浮木一起可以生火。"
     color: [0.50, 0.52, 0.55]
-    use_text: "敲击燧石，迸出几点火星。"
+    craft_campfire_with: driftwood
+    use_text: "敲击燧石，火星落到浮木上。"
   rope:
     display_name: "绳索"
     description: "废墟旁遗落的一卷旧绳。"
     color: [0.62, 0.48, 0.32]
     use_text: "检查了绳圈，还能用。"
+  tide_idol:
+    display_name: "潮汐神像"
+    description: "东岸废墟里唯一的旧物，谁拿着、送给谁，都会变成岛上的话题。"
+    color: [0.78, 0.55, 0.95]
+    unique: true
+    use_text: "神像微微发凉，什么也没发生。"
 
 ground_items:
+  - item: driftwood
+    tile: [47, 46]
   - item: driftwood
     tile: [45, 72]
   - item: seashell
@@ -138,9 +148,11 @@ ground_items:
   - item: beach_grape
     tile: [44, 70]
   - item: flint
-    tile: [48, 42]
+    tile: [48, 46]
   - item: rope
     tile: [66, 60]
+  - item: tide_idol
+    tile: [70, 50]
 
 regions:
   - id: south_beach
@@ -175,6 +187,10 @@ regions:
     name: "北坡果园"
     center: [44, 38]
     radius: 7
+  - id: east_ruin
+    name: "东岸废墟"
+    center: [70, 50]
+    radius: 6
 
 events:
   - id: seabirds
@@ -211,3 +227,13 @@ events:
       count: 8
       from: tree
       to: grass
+  - id: squall
+    text: "暴雨横扫全岛。靠近篝火会暖和些；没有火的地方更冷，已点燃的火堆被浇灭。"
+    interval_ticks: 200
+    duration_ticks: 36
+    first_tick: 88
+    regions: []
+    effects:
+      storm: true
+      energy_awake_scale: 1.35
+      douse_campfires: true

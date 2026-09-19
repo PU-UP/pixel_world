@@ -39,13 +39,20 @@ func is_deceased() -> bool:
 	return enabled() and health <= 0.0
 
 
-func on_tick(day_index: int, phase: String, is_sleeping: bool, is_walking: bool) -> void:
+func on_tick(
+	day_index: int,
+	phase: String,
+	is_sleeping: bool,
+	is_walking: bool,
+	near_campfire: bool = false,
+	storm_energy_scale: float = 1.0,
+) -> void:
 	if not enabled() or is_deceased():
 		return
 	if is_sleeping:
-		_tick_sleep(phase)
+		_tick_sleep(phase, near_campfire)
 	else:
-		_tick_awake(phase, is_walking)
+		_tick_awake(phase, is_walking, near_campfire, storm_energy_scale)
 	if day_index > last_day_index:
 		if day_index - last_day_index > 1:
 			last_day_index = day_index
@@ -178,7 +185,7 @@ func apply_save(data: Dictionary) -> void:
 	_clamp_to_ceilings()
 
 
-func _tick_sleep(phase: String) -> void:
+func _tick_sleep(phase: String, near_campfire: bool = false) -> void:
 	var drain: Dictionary = _drain_cfg()
 	var restore: float = float(drain.get("energy_sleep_restore", 1.15))
 	var night_window: bool = _is_restorative_sleep_phase(phase)
@@ -188,13 +195,15 @@ func _tick_sleep(phase: String) -> void:
 		restore *= float(drain.get("energy_hungry_sleep_scale", 0.55))
 	if is_frail():
 		restore *= clampf(float(_health_cfg().get("frail_sleep_scale", 0.75)), 0.2, 1.0)
+	if near_campfire:
+		restore *= maxf(1.0, Config.traces_campfire_sleep_scale())
 	energy = minf(energy_ceiling, energy + restore)
 	satiety = maxf(0.0, satiety - float(drain.get("satiety_sleep", 0.18)))
 	if night_window:
 		night_sleep_ticks += 1
 
 
-func _tick_awake(phase: String, is_walking: bool) -> void:
+func _tick_awake(phase: String, is_walking: bool, near_campfire: bool = false, storm_energy_scale: float = 1.0) -> void:
 	var drain: Dictionary = _drain_cfg()
 	var e: float = float(drain.get("energy_idle", 0.28))
 	var s: float = float(drain.get("satiety_idle", 0.32))
@@ -210,6 +219,8 @@ func _tick_awake(phase: String, is_walking: bool) -> void:
 		e *= maxf(1.0, float(cfg.get("hungry_energy_scale", 1.18)))
 	if is_frail():
 		e *= maxf(1.0, float(_health_cfg().get("frail_drain_scale", 1.25)))
+	if storm_energy_scale > 1.0 and not near_campfire:
+		e *= storm_energy_scale
 	energy = maxf(0.0, energy - e)
 	satiety = maxf(0.0, satiety - s)
 

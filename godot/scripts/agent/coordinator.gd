@@ -132,6 +132,7 @@ func capture_world(extra: Dictionary = {}) -> Dictionary:
 		"ground_items": _world.state.capture_ground() if _world != null and _world.state != null else [],
 		"tile_overrides": _world.capture_tile_overrides() if _world != null else {},
 		"events": _world.events.capture_save() if _world != null and _world.events != null else {},
+		"traces": _world.state.capture_traces() if _world != null and _world.state != null else {},
 		"selected_index": selected_index,
 		"agents": agents,
 	}
@@ -161,6 +162,10 @@ func apply_world(data: Dictionary) -> bool:
 	_world.state.restore_ground(ground if typeof(ground) == TYPE_ARRAY else [])
 	var events_data: Variant = data.get("events", {})
 	_world.events.restore_save(events_data if typeof(events_data) == TYPE_DICTIONARY else {})
+	var traces_data: Variant = data.get("traces", {})
+	_world.state.restore_traces(traces_data if typeof(traces_data) == TYPE_DICTIONARY else {})
+	if _world.state.prune_meets(_clock.current_tick()):
+		_world.queue_redraw()
 	var agents_raw: Variant = data.get("agents", [])
 	if typeof(agents_raw) != TYPE_ARRAY:
 		agents_raw = []
@@ -249,6 +254,7 @@ func _spawn_agents() -> void:
 		relationships.name = "Relationships_%s" % player.agent_id
 		_runtime_parent.add_child(relationships)
 		relationships.open(str(player.agent_id))
+		player.bind_relationships(relationships)
 
 		var goals: AgentGoalsScript = AgentGoalsScript.new()
 		goals.name = "Goals_%s" % player.agent_id

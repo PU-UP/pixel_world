@@ -137,6 +137,12 @@ func step_matches(action: Dictionary) -> bool:
 			return _contains_any(step, ["等", "wait"])
 		"EMOTE":
 			return _contains_any(step, ["表情", "emote"])
+		"MARK":
+			return _contains_any(step, ["铭刻", "起名", "命名", "mark"])
+		"FOLLOW":
+			return _contains_any(step, ["跟随", "跟着", "follow"])
+		"MEET":
+			return _contains_any(step, ["约定", "会合", "见面", "meet"])
 		_:
 			return false
 
@@ -154,7 +160,7 @@ func _on_tick(_tick_index: int) -> void:
 	_ticks_since_plan += 1
 	if _player != null and _player.is_dead():
 		return
-	if _player != null and (_player.is_sleeping() or _player.is_waiting() or _player.is_walking()):
+	if _player != null and (_player.is_sleeping() or _player.is_waiting() or _player.is_walking() or _player.is_following()):
 		return
 	var trigger: int = int(Config.planning_cfg().get("trigger_ticks", 50))
 	if _steps.is_empty() or _step_index >= _steps.size() or _ticks_since_plan >= trigger:

@@ -85,12 +85,23 @@ func _init() -> void:
 		{"kind": "USE", "params": {"item": "flint", "on": "self"}},
 		{"inventory": ["flint"]},
 	)
-	if not use_fail["ok"] and str(use_fail.get("error", "")).find("改变地形") >= 0:
+	if not use_fail["ok"] and str(use_fail.get("error", "")).find("浮木") >= 0:
 		passed += 1
-		print("[OK]   USE flint rejected with island-cannot-craft reason")
+		print("[OK]   USE flint alone rejected (needs driftwood)")
 	else:
 		failed += 1
-		printerr("[FAIL] USE flint: ", use_fail)
+		printerr("[FAIL] USE flint alone: ", use_fail)
+
+	var use_fire: Dictionary = A.validate_in_context(
+		{"kind": "USE", "params": {"item": "flint", "on": "self"}},
+		{"inventory": ["flint", "driftwood"]},
+	)
+	if use_fire["ok"]:
+		passed += 1
+		print("[OK]   USE flint with driftwood accepted for campfire")
+	else:
+		failed += 1
+		printerr("[FAIL] USE flint+driftwood: ", use_fire)
 
 	var use_food: Dictionary = A.validate_in_context(
 		{"kind": "USE", "params": {"item": "berry_bush", "on": "self"}},
@@ -148,6 +159,60 @@ func _init() -> void:
 		failed += 1
 		printerr("[FAIL] flavor inventory tools use=", has_use, " drop=", has_drop)
 
+	var fire_tools: Array = DecisionPrompt.tool_definitions_for_context(
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		["flint", "driftwood"],
+	)
+	var has_fire_use := false
+	var has_mark := false
+	var has_meet := false
+	for tool in fire_tools:
+		var name_s: String = str(tool.get("function", {}).get("name", ""))
+		if name_s == "USE":
+			has_fire_use = true
+		if name_s == "MARK":
+			has_mark = true
+		if name_s == "MEET":
+			has_meet = true
+	if has_fire_use and has_mark and has_meet:
+		passed += 1
+		print("[OK]   flint+driftwood exposes USE; MARK/MEET always available")
+	else:
+		failed += 1
+		printerr("[FAIL] craft tools use=", has_fire_use, " mark=", has_mark, " meet=", has_meet)
+
+	var mark_ok: Dictionary = A.validate_in_context(
+		{"kind": "MARK", "params": {"x": 48, "y": 48, "label": "南门"}},
+		{"agent_tile": Vector2i(48, 48), "mark_range": 1, "mark_label_max": 12},
+	)
+	var follow_fail: Dictionary = A.validate_in_context(
+		{"kind": "FOLLOW", "params": {"to": "scout"}},
+		{"sight_agent_ids": [], "all_agent_ids": ["scout"]},
+	)
+	if mark_ok["ok"] and not follow_fail["ok"]:
+		passed += 1
+		print("[OK]   MARK nearby accepted; FOLLOW without sight rejected")
+	else:
+		failed += 1
+		printerr("[FAIL] MARK/FOLLOW: mark=", mark_ok, " follow=", follow_fail)
+
+	var traces: WorldState = WorldState.new()
+	var placed: Dictionary = traces.place_mark(Vector2i(10, 10), "火边", "wanderer", 12)
+	var fire: Dictionary = traces.light_campfire(Vector2i(10, 10), "wanderer", 12)
+	var meet: Dictionary = traces.add_meet("scout", Vector2i(12, 12), 80, "sage", 12)
+	var near: bool = traces.is_near_campfire(Vector2i(11, 10), 2)
+	var doused: int = traces.douse_campfires()
+	if placed.get("ok", false) and fire.get("ok", false) and meet.get("ok", false) and near and doused == 1:
+		passed += 1
+		print("[OK]   world traces: mark, campfire, meet, douse")
+	else:
+		failed += 1
+		printerr("[FAIL] traces placed=", placed, " fire=", fire, " meet=", meet, " near=", near, " doused=", doused)
+	traces.free()
+
 	var plan: AgentPlanning = AgentPlanning.new()
 	plan._steps = ["MOVE_TO 前往南滩 (48,75)", "SAY 向 scout 打招呼"]
 	plan._step_index = 0
@@ -200,12 +265,15 @@ func _init() -> void:
 		A.interrupts_walk("USE")
 		and A.interrupts_walk("PICK_UP")
 		and A.interrupts_walk("SLEEP")
+		and A.interrupts_walk("MARK")
+		and A.interrupts_walk("FOLLOW")
+		and A.interrupts_walk("MEET")
 		and not A.interrupts_walk("MOVE_TO")
 		and not A.interrupts_walk("WAIT")
 		and not A.interrupts_walk("EMOTE")
 	):
 		passed += 1
-		print("[OK]   MOVE_TO/WAIT/EMOTE do not interrupt a walk; USE/PICK_UP/SLEEP do")
+		print("[OK]   MOVE_TO/WAIT/EMOTE do not interrupt a walk; USE/PICK_UP/SLEEP/MARK/FOLLOW/MEET do")
 	else:
 		failed += 1
 		printerr("[FAIL] interrupts_walk kinds")

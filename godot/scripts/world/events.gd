@@ -36,6 +36,7 @@ func capture_save() -> Dictionary:
 			"text": str(ev.get("text", "")),
 			"region_ids": regions,
 			"expires_tick": int(ev.get("expires_tick", 0)),
+			"effects": ev.get("effects", {}),
 		})
 	var next_fire: Dictionary = {}
 	for eid in _next_fire.keys():
@@ -74,6 +75,7 @@ func restore_save(data: Dictionary) -> void:
 				"text": str(ev.get("text", "")),
 				"region_ids": regions,
 				"expires_tick": int(ev.get("expires_tick", 0)),
+				"effects": ev.get("effects", {}),
 			})
 	if _clock != null:
 		_prune_expired(_clock.current_tick())
@@ -89,6 +91,30 @@ func lines_for_tile(tile: Vector2i) -> PackedStringArray:
 		if regions.is_empty() or region_id in regions:
 			lines.append(str(ev.get("text", "")))
 	return lines
+
+
+func storm_energy_scale_at(tile: Vector2i) -> float:
+	var scale: float = 1.0
+	if _world == null or _world.state == null:
+		return scale
+	var region_id: String = _world.state.region_id_at(tile)
+	for ev in _active:
+		var effects: Dictionary = _coerce_effects(ev.get("effects", {}))
+		if not bool(effects.get("storm", false)):
+			continue
+		var regions: Array = ev.get("region_ids", [])
+		if not regions.is_empty() and not region_id in regions:
+			continue
+		scale = maxf(scale, float(effects.get("energy_awake_scale", 1.35)))
+	return scale
+
+
+func _event_effects(ev: Dictionary) -> Dictionary:
+	return _coerce_effects(ev.get("effects", {}))
+
+
+func _coerce_effects(raw: Variant) -> Dictionary:
+	return raw if typeof(raw) == TYPE_DICTIONARY else {}
 
 
 func _init_schedule() -> void:
@@ -135,7 +161,13 @@ func _on_tick(tick: int) -> void:
 			"text": text,
 			"region_ids": regions,
 			"expires_tick": tick + duration,
+			"effects": _event_effects(ev),
 		})
+		if bool(_event_effects(ev).get("douse_campfires", false)) and _world != null and _world.state != null:
+			var n: int = _world.state.douse_campfires()
+			if n > 0:
+				text = "%s（浇灭%d处篝火）" % [text, n]
+				_active[-1]["text"] = text
 		event_fired.emit(eid, text, tick)
 		if changed_tiles.size() > 0 and _world != null:
 			_world.queue_redraw()

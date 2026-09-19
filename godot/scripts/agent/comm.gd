@@ -95,6 +95,8 @@ func deliver_give(giver: Player, to_agent_id: String, item_id: String, tick: int
 		return {"ok": false, "error": "target not in sight"}
 	if not receiver.can_accept_item(item):
 		return {"ok": false, "error": "receiver food inventory full"}
+	if receiver.refuses_gift_from(str(giver.agent_id)):
+		return {"ok": false, "error": "receiver refused the gift"}
 	giver.inventory.erase(item)
 	receiver.receive_item(str(giver.agent_id), item, tick)
 	item_given.emit(str(giver.agent_id), target, item, tick)

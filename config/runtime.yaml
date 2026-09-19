@@ -50,6 +50,18 @@ emote:
   display_seconds: 2.5
   max_chars: 8
 
+traces:
+  mark_max: 24
+  mark_label_max: 12
+  mark_range: 1
+  campfire_radius: 2
+  campfire_sleep_scale: 1.35
+  campfire_vision_bonus: 2
+  follow_max_ticks: 80
+  meet_max: 8
+  meet_horizon_ticks: 240
+  meet_default_ticks: 80
+
 vitals:
   enabled: true
   base_max: 100
@@ -190,6 +202,8 @@ relationships:
     familiarity: 0.06
     affinity: 0.05
     trust: 0.04
+  give_refuse_familiarity: 0.35
+  give_refuse_affinity_below: 0.12
 
 persona_drift:
   max_per_trait: 0.15

@@ -52,6 +52,7 @@ func _ready() -> void:
 	add_child(state)
 	state.setup(self)
 	state.ground_item_changed.connect(_on_ground_items_changed)
+	state.traces_changed.connect(_on_traces_changed)
 	events = WorldEventsScript.new()
 	events.name = "WorldEvents"
 	add_child(events)
@@ -59,6 +60,10 @@ func _ready() -> void:
 
 
 func _on_ground_items_changed() -> void:
+	queue_redraw()
+
+
+func _on_traces_changed() -> void:
 	queue_redraw()
 
 func world_size() -> Vector2:
@@ -545,6 +550,7 @@ func _set_terrain_cell(tile: Vector2i, terrain: int) -> void:
 
 func _draw() -> void:
 	_draw_ground_items()
+	_draw_traces()
 
 
 func _draw_ground_items() -> void:
@@ -570,3 +576,60 @@ func _draw_ground_items() -> void:
 		)
 		draw_circle(center, 3.0, color)
 		draw_circle(center, 3.0, Color(0, 0, 0, 0.5), false, 1.0)
+
+
+func _trace_visible(tile: Vector2i) -> bool:
+	if _god_items or _item_filter == null:
+		return true
+	return _item_filter.get_state(tile.x, tile.y) == ExplorationMap.TileVis.VISIBLE
+
+
+func _draw_traces() -> void:
+	if state == null:
+		return
+	var font: Font = ThemeDB.fallback_font
+	for fire in state.all_campfires():
+		var tile: Vector2i = fire.get("tile", Vector2i.ZERO)
+		if not _trace_visible(tile):
+			continue
+		var center := Vector2(
+			tile.x * TILE_SIZE + TILE_SIZE * 0.5,
+			tile.y * TILE_SIZE + TILE_SIZE * 0.5,
+		)
+		draw_circle(center + Vector2(0, 1), 4.2, Color(0.22, 0.08, 0.04, 0.95))
+		draw_circle(center, 3.2, Color(0.95, 0.42, 0.12, 0.95))
+		draw_circle(center + Vector2(0, -2), 1.8, Color(1.0, 0.86, 0.35, 0.95))
+	for meet in state.active_meets():
+		var tile := Vector2i(int(meet.get("x", 0)), int(meet.get("y", 0)))
+		if not _trace_visible(tile):
+			continue
+		var center := Vector2(
+			tile.x * TILE_SIZE + TILE_SIZE * 0.5,
+			tile.y * TILE_SIZE + TILE_SIZE * 0.5,
+		)
+		var diamond := PackedVector2Array([
+			center + Vector2(0, -5),
+			center + Vector2(4, 0),
+			center + Vector2(0, 5),
+			center + Vector2(-4, 0),
+		])
+		draw_colored_polygon(diamond, Color(0.35, 0.82, 0.95, 0.8))
+	for mark in state.all_marks():
+		var tile: Vector2i = mark.get("tile", Vector2i.ZERO)
+		if not _trace_visible(tile):
+			continue
+		var center := Vector2(
+			tile.x * TILE_SIZE + TILE_SIZE * 0.5,
+			tile.y * TILE_SIZE + TILE_SIZE * 0.5,
+		)
+		draw_rect(Rect2(center + Vector2(-3, -3), Vector2(6, 6)), Color(0.92, 0.9, 0.78, 0.95))
+		draw_rect(Rect2(center + Vector2(-3, -3), Vector2(6, 6)), Color(0.18, 0.14, 0.1, 0.85), false, 1.0)
+		if font == null:
+			continue
+		var label: String = str(mark.get("label", ""))
+		if label.is_empty():
+			continue
+		var font_size: int = 8
+		var sz: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var origin := Vector2(center.x - sz.x * 0.5, center.y - 8)
+		draw_string(font, origin, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.97, 0.86, 0.95))

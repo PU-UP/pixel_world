@@ -15,10 +15,10 @@ static func build_messages(
 ) -> Array:
 	var system := """You are an autonomous agent planning the next stretch of activity on a 2D pixel island.
 Write a numbered list of 5-7 short steps you intend to follow, in Simplified Chinese (简体中文).
-Each step MUST start with one action primitive: MOVE_TO, SAY, PICK_UP, USE, GIVE, OBSERVE, SLEEP, WAIT, SHARE_MAP, EMOTE.
+Each step MUST start with one action primitive: MOVE_TO, SAY, PICK_UP, USE, GIVE, OBSERVE, SLEEP, WAIT, SHARE_MAP, EMOTE, MARK, FOLLOW, MEET.
 MOVE_TO steps MUST include walkable tile coordinates like (32,50) or a named region. Prefer listed frontier tiles over wandering nearby.
-SAY/GIVE/SHARE_MAP only if someone is currently in sight.
-PICK_UP of food gathers every matching item in sight. USE food to eat. Non-food items cannot change the island yet.
+SAY/GIVE/SHARE_MAP/FOLLOW only if someone is currently in sight.
+MARK leaves a named landmark nearby. MEET posts a public meeting at coordinates until a tick. USE flint+driftwood together to light a campfire; food to eat. Other non-food items cannot change the island.
 Example: "1. MOVE_TO 前往南滩 (48,75)"
 You have an immutable goal to stay alive. Death is irreversible; there is no suicide action.
 Health falls at dawn from consecutive missed night sleep or days without food; health 0 is death.

@@ -271,15 +271,43 @@ func item_is_food(item_id: String) -> bool:
 	return bool(item_def(item_id).get("food", false))
 
 
-func item_is_usable(item_id: String) -> bool:
-	return item_is_food(item_id)
+func item_is_usable(item_id: String, inventory: Array = []) -> bool:
+	if item_is_food(item_id):
+		return true
+	return item_can_craft_campfire(item_id, inventory)
 
 
-func item_unusable_reason(item_id: String) -> String:
+func item_craft_partner(item_id: String) -> String:
+	return str(item_def(item_id).get("craft_campfire_with", "")).strip_edges()
+
+
+func item_can_craft_campfire(item_id: String, inventory: Array) -> bool:
+	var partner: String = item_craft_partner(item_id)
+	if partner.is_empty():
+		return false
+	return _inventory_has(inventory, partner)
+
+
+func item_unusable_reason(item_id: String, inventory: Array = []) -> String:
 	var name_s: String = str(item_def(item_id).get("display_name", item_id)).strip_edges()
 	if name_s.is_empty():
 		name_s = item_id
+	var partner: String = item_craft_partner(item_id)
+	if not partner.is_empty():
+		var partner_name: String = str(item_def(partner).get("display_name", partner)).strip_edges()
+		if not _inventory_has(inventory, partner):
+			return "需要同时带着%s才能生火" % partner_name
 	return "这块岛上还不能用%s改变地形或制造工具" % name_s
+
+
+func _inventory_has(inventory: Array, item_id: String) -> bool:
+	var key := item_id.strip_edges()
+	if key.is_empty():
+		return false
+	for raw in inventory:
+		if str(raw).strip_edges() == key:
+			return true
+	return false
 
 
 func food_count_in(inventory: Array) -> int:
@@ -316,6 +344,62 @@ func emote_display_seconds() -> float:
 
 func emote_max_chars() -> int:
 	return int(emote_cfg().get("max_chars", 8))
+
+
+func traces_cfg() -> Dictionary:
+	return runtime.get("traces", {})
+
+
+func traces_mark_max() -> int:
+	return int(traces_cfg().get("mark_max", 24))
+
+
+func traces_mark_label_max() -> int:
+	return int(traces_cfg().get("mark_label_max", 12))
+
+
+func traces_mark_range() -> int:
+	return int(traces_cfg().get("mark_range", 1))
+
+
+func traces_campfire_radius() -> int:
+	return int(traces_cfg().get("campfire_radius", 2))
+
+
+func traces_campfire_sleep_scale() -> float:
+	return float(traces_cfg().get("campfire_sleep_scale", 1.35))
+
+
+func traces_campfire_vision_bonus() -> int:
+	return int(traces_cfg().get("campfire_vision_bonus", 2))
+
+
+func traces_follow_max_ticks() -> int:
+	return int(traces_cfg().get("follow_max_ticks", 80))
+
+
+func traces_meet_max() -> int:
+	return int(traces_cfg().get("meet_max", 8))
+
+
+func traces_meet_horizon_ticks() -> int:
+	return int(traces_cfg().get("meet_horizon_ticks", 240))
+
+
+func game_version() -> String:
+	var raw: String = str(ProjectSettings.get_setting("application/config/version", "2.12.0")).strip_edges()
+	return raw if not raw.is_empty() else "2.12.0"
+
+
+func game_version_label() -> String:
+	var v: String = game_version()
+	if v.begins_with("v"):
+		return v
+	return "v%s" % v
+
+
+func traces_meet_default_ticks() -> int:
+	return int(traces_cfg().get("meet_default_ticks", 80))
 
 
 func planning_cfg() -> Dictionary:

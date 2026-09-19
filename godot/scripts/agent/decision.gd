@@ -95,7 +95,7 @@ func _on_tick(_tick_index: int) -> void:
 		return
 	if _player.is_waiting() and not _player.can_relieve_vitals_in_place():
 		return
-	if _player.is_walking() and not _should_redecide_while_walking():
+	if (_player.is_walking() or _player.is_following()) and not _should_redecide_while_walking():
 		return
 	var min_gap: int = Config.decision_min_ticks_between()
 	if min_gap > 0 and _clock.current_tick() - _last_decision_tick < min_gap:
@@ -253,8 +253,11 @@ func _normalize_action(action: Dictionary) -> Dictionary:
 	var out := action.duplicate(true)
 	var kind: String = str(out.get("kind", ""))
 	var params: Dictionary = out.get("params", {})
-	if kind == AgentActions.KIND_SAY or kind == AgentActions.KIND_GIVE:
+	if kind == AgentActions.KIND_SAY or kind == AgentActions.KIND_GIVE or kind == AgentActions.KIND_FOLLOW:
 		if _comm != null and params.has("to"):
+			params["to"] = _comm.resolve_agent_id(str(params.get("to", "")))
+	if kind == AgentActions.KIND_MEET and params.has("to"):
+		if _comm != null:
 			params["to"] = _comm.resolve_agent_id(str(params.get("to", "")))
 	if kind == AgentActions.KIND_OBSERVE and params.has("target"):
 		params["target"] = str(params.get("target", "")).strip_edges()
@@ -300,7 +303,7 @@ func _maybe_redirect_action(action: Dictionary, gate: Dictionary) -> Dictionary:
 	if hint != "move_closer":
 		return action
 	var kind: String = str(action.get("kind", ""))
-	if kind != AgentActions.KIND_SAY and kind != AgentActions.KIND_GIVE and kind != AgentActions.KIND_SHARE_MAP:
+	if kind != AgentActions.KIND_SAY and kind != AgentActions.KIND_GIVE and kind != AgentActions.KIND_SHARE_MAP and kind != AgentActions.KIND_FOLLOW and kind != AgentActions.KIND_MEET:
 		return action
 	var target_id: String = str(action["params"].get("to", "")).strip_edges()
 	if kind == AgentActions.KIND_SAY and not _player.get_pending_reply_from().is_empty():
@@ -335,8 +338,11 @@ func _record_outcome(tick: int, action: Dictionary, result: Dictionary) -> void:
 	var kind: String = str(action.get("kind", ""))
 	var social := 0.0
 	var emotional := 0.0
-	if kind in [AgentActions.KIND_SAY, AgentActions.KIND_GIVE, AgentActions.KIND_SHARE_MAP]:
+	if kind in [AgentActions.KIND_SAY, AgentActions.KIND_GIVE, AgentActions.KIND_SHARE_MAP, AgentActions.KIND_FOLLOW, AgentActions.KIND_MEET]:
 		social = 0.7
+	elif kind == AgentActions.KIND_MARK:
+		social = 0.4
+		emotional = 0.15
 	elif kind == AgentActions.KIND_EMOTE:
 		social = 0.35
 	elif kind == AgentActions.KIND_USE:
@@ -413,7 +419,7 @@ func _ground_item_ids() -> PackedStringArray:
 
 
 func _should_redecide_while_walking() -> bool:
-	if not _player.is_walking():
+	if not _player.is_walking() and not _player.is_following():
 		return true
 	if Config.decision_skip_while_walking():
 		return false

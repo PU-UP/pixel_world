@@ -62,6 +62,15 @@ static func normalize_tool_args(kind: String, parsed: Variant) -> Dictionary:
 				return {"item": s}
 			AgentActions.KIND_EMOTE:
 				return {"emoji": s}
+			AgentActions.KIND_FOLLOW:
+				return {"to": s}
+			AgentActions.KIND_MARK:
+				if parsed.size() >= 3:
+					return {"x": parsed[0], "y": parsed[1], "label": str(parsed[2])}
+				return {"label": s}
+			AgentActions.KIND_MEET:
+				if parsed.size() >= 2:
+					return {"x": parsed[0], "y": parsed[1]}
 		return {}
 	if typeof(parsed) == TYPE_STRING:
 		var text: String = parsed.strip_edges()
@@ -74,6 +83,10 @@ static func normalize_tool_args(kind: String, parsed: Variant) -> Dictionary:
 				return {"to": "broadcast", "text": text}
 			AgentActions.KIND_EMOTE:
 				return {"emoji": text}
+			AgentActions.KIND_FOLLOW:
+				return {"to": text}
+			AgentActions.KIND_MARK:
+				return {"label": text}
 	return {}
 
 

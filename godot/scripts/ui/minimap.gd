@@ -89,6 +89,28 @@ func _draw() -> void:
 			var ipy: float = it.y * sy + sy * 0.5
 			var item_id: String = str(item.get("item_id", ""))
 			draw_rect(Rect2(ipx - 1.0, ipy - 1.0, 2.0, 2.0), _item_color(item_id))
+		if _god_mode or _exploration != null:
+			for fire in _world.state.all_campfires():
+				var ft: Vector2i = fire.get("tile", Vector2i.ZERO)
+				if not _god_mode and _exploration != null and _exploration.get_state(ft.x, ft.y) != ExplorationMap.TileVis.VISIBLE:
+					continue
+				var fpx: float = ft.x * sx + sx * 0.5
+				var fpy: float = ft.y * sy + sy * 0.5
+				draw_rect(Rect2(fpx - 1.5, fpy - 1.5, 3.0, 3.0), Color(1.0, 0.45, 0.12, 0.95))
+			for mark in _world.state.all_marks():
+				var mt: Vector2i = mark.get("tile", Vector2i.ZERO)
+				if not _god_mode and _exploration != null and _exploration.get_state(mt.x, mt.y) != ExplorationMap.TileVis.VISIBLE:
+					continue
+				var mpx: float = mt.x * sx + sx * 0.5
+				var mpy: float = mt.y * sy + sy * 0.5
+				draw_rect(Rect2(mpx - 1.0, mpy - 1.0, 2.0, 2.0), Color(0.95, 0.93, 0.8, 0.95))
+			for meet in _world.state.active_meets():
+				var et := Vector2i(int(meet.get("x", 0)), int(meet.get("y", 0)))
+				if not _god_mode and _exploration != null and _exploration.get_state(et.x, et.y) != ExplorationMap.TileVis.VISIBLE:
+					continue
+				var epx: float = et.x * sx + sx * 0.5
+				var epy: float = et.y * sy + sy * 0.5
+				draw_circle(Vector2(epx, epy), 2.0, Color(0.35, 0.82, 0.95, 0.9))
 	for agent in _agents:
 		if agent == null or not is_instance_valid(agent):
 			continue

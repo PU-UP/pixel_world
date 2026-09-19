@@ -20,11 +20,14 @@ const KIND_GIVE      := "GIVE"
 const KIND_SHARE_MAP := "SHARE_MAP"
 const KIND_SLEEP     := "SLEEP"
 const KIND_WAIT      := "WAIT"
+const KIND_MARK      := "MARK"
+const KIND_FOLLOW    := "FOLLOW"
+const KIND_MEET      := "MEET"
 
 const PICK_UP_ALL_FOOD := "all_food"
 
 const IMPLEMENTED_KINDS: Array[String] = [
-	KIND_MOVE_TO, KIND_SAY, KIND_EMOTE, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP,
+	KIND_MOVE_TO, KIND_SAY, KIND_EMOTE, KIND_PICK_UP, KIND_DROP, KIND_OBSERVE, KIND_USE, KIND_GIVE, KIND_SHARE_MAP, KIND_WAIT, KIND_SLEEP, KIND_MARK, KIND_FOLLOW, KIND_MEET,
 ]
 
 # ------------------------------------------------------------------
@@ -87,6 +90,21 @@ const SCHEMAS: Dictionary = {
 		"types":    {"ticks": TYPE_INT},
 		"desc":     "Wait in place for N ticks",
 	},
+	KIND_MARK: {
+		"required": ["x", "y", "label"],
+		"types":    {"x": TYPE_INT, "y": TYPE_INT, "label": TYPE_STRING},
+		"desc":     "Leave a named landmark on a nearby walkable tile",
+	},
+	KIND_FOLLOW: {
+		"required": ["to"],
+		"types":    {"to": TYPE_STRING},
+		"desc":     "Follow a living agent currently in sight, staying on an adjacent tile",
+	},
+	KIND_MEET: {
+		"required": ["x", "y"],
+		"types":    {"x": TYPE_INT, "y": TYPE_INT, "until_tick": TYPE_INT, "to": TYPE_STRING},
+		"desc":     "Post a public meeting at a walkable tile until a future tick",
+	},
 }
 
 # ------------------------------------------------------------------
@@ -104,6 +122,9 @@ const TICK_COST_BASE: Dictionary = {
 	KIND_SHARE_MAP: 1,
 	KIND_SLEEP:    0,    # 实际 = until_tick - now
 	KIND_WAIT:     0,    # 实际 = ticks
+	KIND_MARK:     1,
+	KIND_FOLLOW:   0,    # 实际走 MOVE_TO
+	KIND_MEET:     1,
 }
 
 const MOVE_TICKS_PER_TILE: int = 1   # 每走 1 瓦片消耗 1 tick
@@ -313,9 +334,72 @@ static func validate_in_context(action: Dictionary, ctx: Dictionary) -> Dictiona
 			var need_item: String = str(params.get("item", "")).strip_edges()
 			if not _contains_id(inv_d, need_item):
 				return {"ok": false, "error": "not carrying item: %s" % need_item, "hint": ""}
-			if kind == KIND_USE and not Config.item_is_usable(need_item):
-				return {"ok": false, "error": Config.item_unusable_reason(need_item), "hint": ""}
+			if kind == KIND_USE and not Config.item_is_usable(need_item, inv_d):
+				return {"ok": false, "error": Config.item_unusable_reason(need_item, inv_d), "hint": ""}
 			return {"ok": true, "error": "", "hint": ""}
+		KIND_MARK:
+			var mark_label: String = str(params.get("label", "")).strip_edges()
+			if mark_label.is_empty():
+				return {"ok": false, "error": "empty mark label", "hint": ""}
+			var max_label: int = int(ctx.get("mark_label_max", Config.traces_mark_label_max()))
+			if mark_label.length() > max_label:
+				return {"ok": false, "error": "mark label longer than %d" % max_label, "hint": ""}
+			var world_m = ctx.get("world", null)
+			var start_m: Vector2i = ctx.get("agent_tile", Vector2i.ZERO)
+			var goal_m := Vector2i(int(params.get("x", start_m.x)), int(params.get("y", start_m.y)))
+			if _chebyshev(start_m, goal_m) > int(ctx.get("mark_range", Config.traces_mark_range())):
+				return {"ok": false, "error": "mark tile out of range", "hint": ""}
+			if world_m != null and not world_m.is_walkable_tile(goal_m):
+				return {"ok": false, "error": "mark tile not walkable", "hint": ""}
+			return {"ok": true, "error": "", "hint": ""}
+		KIND_FOLLOW:
+			var to_follow: String = str(params.get("to", "")).strip_edges()
+			if _looks_like_tick_id(to_follow):
+				return {"ok": false, "error": "unknown agent: %s" % to_follow, "hint": ""}
+			var sight_f: Array = ctx.get("sight_agent_ids", [])
+			if _contains_id(sight_f, to_follow):
+				return {"ok": true, "error": "", "hint": ""}
+			var all_f: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_f, to_follow):
+				return {
+					"ok": false,
+					"error": "agent not in sight: %s" % to_follow,
+					"hint": "approach_agent",
+					"approach_id": to_follow,
+				}
+			return {"ok": false, "error": "unknown agent: %s" % to_follow, "hint": ""}
+		KIND_MEET:
+			var world_meet = ctx.get("world", null)
+			var meet_tile := Vector2i(int(params.get("x", 0)), int(params.get("y", 0)))
+			if world_meet != null and not world_meet.is_walkable_tile(meet_tile):
+				return {"ok": false, "error": "meet tile not walkable", "hint": ""}
+			var until_tick: int = int(params.get("until_tick", 0))
+			var now_tick: int = int(ctx.get("current_tick", 0))
+			if until_tick <= 0:
+				until_tick = now_tick + int(ctx.get("meet_default_ticks", Config.traces_meet_default_ticks()))
+				params["until_tick"] = until_tick
+			if until_tick <= now_tick:
+				return {"ok": false, "error": "MEET until_tick must be in the future", "hint": ""}
+			var horizon: int = int(ctx.get("meet_horizon_ticks", Config.traces_meet_horizon_ticks()))
+			if until_tick - now_tick > horizon:
+				return {"ok": false, "error": "MEET farther than %d ticks" % horizon, "hint": ""}
+			var to_meet: String = str(params.get("to", "")).strip_edges()
+			if to_meet.is_empty() or to_meet == "broadcast":
+				return {"ok": true, "error": "", "hint": ""}
+			if _looks_like_tick_id(to_meet):
+				return {"ok": false, "error": "unknown agent: %s" % to_meet, "hint": ""}
+			var sight_m: Array = ctx.get("sight_agent_ids", [])
+			if _contains_id(sight_m, to_meet):
+				return {"ok": true, "error": "", "hint": ""}
+			var all_m: Array = ctx.get("all_agent_ids", [])
+			if _contains_id(all_m, to_meet):
+				return {
+					"ok": false,
+					"error": "agent not in sight: %s" % to_meet,
+					"hint": "approach_agent",
+					"approach_id": to_meet,
+				}
+			return {"ok": false, "error": "unknown agent: %s" % to_meet, "hint": ""}
 		_:
 			return {"ok": true, "error": "", "hint": ""}
 
@@ -380,6 +464,10 @@ static func build_context(player: Player, comm, world) -> Dictionary:
 		"wait_max_ticks": Config.decision_wait_max_ticks(),
 		"sleep_max_ticks": Config.time_sleep_max_ticks(),
 		"emote_max_chars": Config.emote_max_chars(),
+		"mark_label_max": Config.traces_mark_label_max(),
+		"mark_range": Config.traces_mark_range(),
+		"meet_horizon_ticks": Config.traces_meet_horizon_ticks(),
+		"meet_default_ticks": Config.traces_meet_default_ticks(),
 		"current_tick": player.current_tick(),
 	}
 
@@ -604,6 +692,21 @@ static func make_share_map(to_agent_id: String) -> Dictionary:
 	return {"kind": KIND_SHARE_MAP, "params": {"to": to_agent_id}}
 
 
+static func make_follow(to_agent_id: String) -> Dictionary:
+	return {"kind": KIND_FOLLOW, "params": {"to": to_agent_id}}
+
+
+static func make_mark(x: int, y: int, label: String) -> Dictionary:
+	return {"kind": KIND_MARK, "params": {"x": x, "y": y, "label": label}}
+
+
+static func make_meet(x: int, y: int, until_tick: int, to_agent_id: String = "") -> Dictionary:
+	var params := {"x": x, "y": y, "until_tick": until_tick}
+	if not to_agent_id.strip_edges().is_empty():
+		params["to"] = to_agent_id
+	return {"kind": KIND_MEET, "params": params}
+
+
 ## 调试: action -> 字符串 (勿命名为 to_string, 会与 Object 内置方法冲突)
 static func format_action(action: Dictionary) -> String:
 	if not action.has("kind"):
@@ -621,4 +724,7 @@ static func interrupts_walk(kind: String) -> bool:
 		KIND_SHARE_MAP,
 		KIND_OBSERVE,
 		KIND_DROP,
+		KIND_MARK,
+		KIND_MEET,
+		KIND_FOLLOW,
 	]

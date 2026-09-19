@@ -31,7 +31,7 @@ Each game tick you must choose exactly ONE action using the provided tool.
 Only tools listed in the request are available — pick one of them.
 MOVE_TO uses tile coordinates (integers). You cannot walk on water, trees, or mountains.
 Do not MOVE_TO another agent's exact tile — stand on an adjacent walkable tile to talk.
-SAY, GIVE, SHARE_MAP, and using items on others require that agent to be in your current field of view (perception radius + line of sight). If nobody is in sight, those tools are not available — do not shout at empty air.
+SAY, GIVE, SHARE_MAP, FOLLOW, and using items on others require that agent to be in your current field of view (perception radius + line of sight). If nobody is in sight, those tools are not available — do not shout at empty air.
 If someone spoke to you and they are still in sight (=== Pending reply ===), respond with SAY using NEW words.
 WAIT to stand still for a few ticks when you have nothing urgent to do.
 EMOTE shows a short emoji visible to agents in sight (0 ticks). Use Unicode emoji or a short token.
@@ -40,7 +40,12 @@ Eating food restores satiety and a little energy — food is not a substitute fo
 Hungry sleep restores less energy. Skipping nights shrinks your energy ceiling; skipping food shrinks your satiety ceiling. Ceilings recover only after consecutive good nights / days of eating.
 Health is settled at dawn from consecutive missed night sleep and days without food. Health 0 is irreversible death. There is no suicide primitive. Low health makes you frailer (faster energy drain, worse sleep restore, slower walk) but does not force any action.
 You have an immutable goal to stay alive.
-USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby living agent to feed them. Non-food items cannot change the island yet — drop them if you must.
+USE edible items (berry_bush, wild_nut, beach_grape) on self to eat, or on a nearby living agent to feed them.
+If you carry both flint and driftwood, USE either on self to light a campfire on your tile. Campfires are visible, help night sleep, and slightly expand night vision. Rain can put them out.
+MARK leaves a named landmark on a nearby walkable tile. Others who see it can read the name.
+FOLLOW a living agent in sight to walk with them on an adjacent tile.
+MEET posts a public appointment at a walkable tile until a future tick; everyone can see it in their observation.
+Non-food items other than flint+driftwood still cannot change the island — drop them if you must.
 You may carry at most a few food items; drop or eat before picking more.
 PICK_UP of food gathers every matching food item currently in sight, until the food bag is full. Use item all_food to gather every visible food type at once.
 MOVE_TO may target any walkable tile, not only listed ones. Frontier tiles are walkable cells at the edge of land you have already explored.
@@ -173,7 +178,7 @@ static func tool_definitions_for_context(
 			var iid: String = str(raw).strip_edges()
 			if iid.is_empty() or iid in usable:
 				continue
-			if Config.item_is_usable(iid):
+			if Config.item_is_usable(iid, inventory):
 				usable.append(iid)
 		if usable.size() > 0:
 			var use_on: Array = ["self"]
@@ -181,7 +186,7 @@ static func tool_definitions_for_context(
 				use_on.append(id)
 			tools.append(_fn(
 				AgentActions.KIND_USE,
-				"Eat food on self, or feed a living agent in sight. Non-food items cannot be used yet.",
+				"Eat food on self, or feed a living agent in sight. If you carry flint and driftwood, USE either to light a campfire on your tile.",
 				{
 					"item": {"type": "string", "enum": _array_from_packed(usable)},
 					"on": {"type": "string", "enum": use_on},
@@ -207,6 +212,39 @@ static func tool_definitions_for_context(
 			},
 			["to"],
 		))
+	if sight_agent_ids.size() > 0:
+		tools.append(_fn(
+			AgentActions.KIND_FOLLOW,
+			"Follow a living agent in sight and keep to an adjacent tile until you choose another action or they leave sight",
+			{
+				"to": {"type": "string", "enum": _array_from_packed(sight_agent_ids)},
+			},
+			["to"],
+		))
+	tools.append(_fn(
+		AgentActions.KIND_MARK,
+		"Leave a short named landmark on your current or adjacent walkable tile. Others who see the tile can read it.",
+		{
+			"x": {"type": "integer", "description": "tile x"},
+			"y": {"type": "integer", "description": "tile y"},
+			"label": {"type": "string", "description": "简体中文地名，最多%d字" % Config.traces_mark_label_max()},
+		},
+		["x", "y", "label"],
+	))
+	var meet_to: Array = ["broadcast"]
+	for id in sight_agent_ids:
+		meet_to.append(id)
+	tools.append(_fn(
+		AgentActions.KIND_MEET,
+		"Post a public meeting at a walkable tile until a future tick. Optional to= an agent in sight or broadcast.",
+		{
+			"x": {"type": "integer", "description": "meet tile x"},
+			"y": {"type": "integer", "description": "meet tile y"},
+			"until_tick": {"type": "integer", "description": "world tick when the meeting expires"},
+			"to": {"type": "string", "enum": meet_to},
+		},
+		["x", "y"],
+	))
 	var max_wait: int = Config.decision_wait_max_ticks()
 	tools.append(_fn(
 		AgentActions.KIND_WAIT,

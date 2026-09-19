@@ -17,6 +17,9 @@
 | `GIVE` | `item_id, to` | 1 | 否 | 双方可见 |
 | `SLEEP` | `until_tick` | 睡到该 tick | 否 | 视野内可见入睡 |
 | `WAIT` | `ticks` | 指定 tick | 是 | 视野内可见"发呆" |
+| `MARK` | `x, y, label` | 1 | 否 | 该格留下地名，视野内可读 |
+| `FOLLOW` | `to` | 跟随期间持续走 | 是 | 贴邻格同行，视野内可见 |
+| `MEET` | `x, y, until_tick?, to?` | 1 | 否 | 全图公开约定，地图上有会合钉 |
 
 ## 编码方式 (P2 实施)
 
@@ -35,6 +38,7 @@ class Action:
 
 ## 当前状态
 
-- 已实现：`MOVE_TO` `SAY` `EMOTE` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP`
-- `USE` 食物（`food: true`）回复饱腹和少量精力；非食物不能改变地形，USE 失败
-- 走路中 `MOVE_TO` 不打断当前路径；`USE` / `PICK_UP` / `SLEEP` / `SAY` 才会停下
+- 已实现：`MOVE_TO` `SAY` `EMOTE` `OBSERVE` `PICK_UP` `DROP` `USE` `GIVE` `SHARE_MAP` `WAIT` `SLEEP` `MARK` `FOLLOW` `MEET`
+- `USE` 食物回复饱腹和少量精力；燧石+浮木可在脚下生火；其它非食物仍失败
+- `MARK` 写在邻近可走格；`FOLLOW` 须看见对方；`MEET` 是世界公开约定
+- 走路中 `MOVE_TO` 不打断当前路径；`USE` / `PICK_UP` / `SLEEP` / `SAY` / `MARK` / `FOLLOW` / `MEET` 才会停下
